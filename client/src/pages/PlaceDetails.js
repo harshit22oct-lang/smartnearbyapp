@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+
 
 const API = process.env.REACT_APP_API_URL;
+const location = useLocation();
+const heroPhotoRefFromNav = location?.state?.heroPhotoRef || "";
+const heroUrlFromNav = location?.state?.heroUrl || "";
+
 
 const clamp = (lines) => ({
   display: "-webkit-box",
@@ -138,12 +143,17 @@ const PlaceDetails = () => {
     return merged;
   }, [data]);
 
-  const heroImage = useMemo(() => {
+const heroImage = useMemo(() => {
   if (photos.length) return photos[0];
 
-  // ✅ fallback image if no photos returned
-  return "https://images.unsplash.com/photo-1521017432531-fbd92d768814?auto=format&fit=crop&w=1200&q=60";
-}, [photos]);
+  // ✅ fallback 1: google photoRef from dashboard
+  if (heroPhotoRefFromNav) return googleImg(heroPhotoRefFromNav);
+
+  // ✅ fallback 2: mongo image url from dashboard
+  if (heroUrlFromNav) return heroUrlFromNav;
+
+  return "";
+}, [photos, heroPhotoRefFromNav, heroUrlFromNav]);
 
 
   const openViewer = (idx) => {
