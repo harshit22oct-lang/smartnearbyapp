@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 
-const API = "http://localhost:5000";
+const API = process.env.REACT_APP_API_URL; // ✅ LIVE API (CRA)
 
 const clamp = (lines) => ({
   display: "-webkit-box",
@@ -32,11 +32,41 @@ const cardStyle = {
   boxShadow: "0 10px 28px rgba(0,0,0,0.06)",
 };
 
+const navBtn = {
+  position: "absolute",
+  top: "50%",
+  transform: "translateY(-50%)",
+  padding: "10px 12px",
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: "rgba(0,0,0,0.35)",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 1000,
+};
+
+const stickyBtn = {
+  flex: 1,
+  padding: "12px 12px",
+  borderRadius: 14,
+  border: "1px solid #e7e7e7",
+  fontWeight: 1000,
+  textAlign: "center",
+  textDecoration: "none",
+  cursor: "pointer",
+};
+
 const PlaceDetails = () => {
   const { source, id } = useParams(); // "mongo" | "google"
   const navigate = useNavigate();
 
   const token = localStorage.getItem("token");
+
+  // ✅ If token missing, redirect to login
+  useEffect(() => {
+    if (!token) navigate("/");
+  }, [token, navigate]);
+
   const authHeader = useMemo(
     () => ({ headers: { Authorization: `Bearer ${token}` } }),
     [token]
@@ -53,19 +83,29 @@ const PlaceDetails = () => {
   // hours accordion
   const [hoursOpen, setHoursOpen] = useState(false);
 
+  // ✅ guard if env missing
+  useEffect(() => {
+    if (!API) {
+      setMsg("API URL missing. Set REACT_APP_API_URL in Vercel (Production) and redeploy.");
+      setLoading(false);
+    }
+  }, []);
+
   const googleImg = (ref) => {
-    if (!ref) return "";
+    if (!ref || !API) return "";
     return `${API}/api/google/photo?photoRef=${encodeURIComponent(ref)}`;
   };
 
   const absUpload = (u) => {
-    if (!u) return "";
+    if (!u || !API) return "";
     const s = String(u);
     if (s.startsWith("/uploads/")) return `${API}${s}`;
     return s;
   };
 
   const fetchDetails = async () => {
+    if (!API) return;
+
     setLoading(true);
     setMsg("");
     setData(null);
@@ -99,18 +139,14 @@ const PlaceDetails = () => {
 
     if (data.source === "google") {
       const list = Array.isArray(data.photos) ? data.photos : [];
-      // expected google: [{photoRef}]
       return list
         .map((x) => (x?.photoRef ? googleImg(x.photoRef) : ""))
         .filter(Boolean);
     }
 
-    // mongo curated:
-    // NEW: images[] can include /uploads/... or external URLs
     const imgs = Array.isArray(data.images) ? data.images : [];
     const merged = imgs.map(absUpload).filter(Boolean);
 
-    // fallback for old fields
     if (merged.length === 0) {
       if (data.photoRef) merged.push(googleImg(data.photoRef));
       else if (data.imageUrl) merged.push(absUpload(data.imageUrl));
@@ -118,10 +154,7 @@ const PlaceDetails = () => {
     return merged;
   }, [data]);
 
-  const heroImage = useMemo(() => {
-    if (photos.length) return photos[0];
-    return "";
-  }, [photos]);
+  const heroImage = useMemo(() => (photos.length ? photos[0] : ""), [photos]);
 
   const openViewer = (idx) => {
     if (!photos.length) return;
@@ -177,7 +210,7 @@ const PlaceDetails = () => {
   return (
     <div style={{ background: "#f6f7fb", minHeight: "100vh" }}>
       {/* Top gradient hero */}
-      <div style={{ position: "relative", overflow: "hidden"}}>
+      <div style={{ position: "relative", overflow: "hidden" }}>
         <div
           style={{
             height: "clamp(260px, 45vh, 520px)",
@@ -186,7 +219,6 @@ const PlaceDetails = () => {
             background: heroImage
               ? `url("${heroImage}") center/cover no-repeat`
               : "linear-gradient(135deg,#1b1b1b,#3a3a3a)",
-            filter: heroImage ? "none" : "none",
           }}
         />
         {/* overlay */}
@@ -258,7 +290,9 @@ const PlaceDetails = () => {
         >
           <div style={{ maxWidth: 1100, margin: "0 auto" }}>
             {loading ? (
-              <div style={{ color: "#fff", opacity: 0.9, fontWeight: 800 }}>Loading...</div>
+              <div style={{ color: "#fff", opacity: 0.9, fontWeight: 800 }}>
+                Loading...
+              </div>
             ) : msg ? (
               <div
                 style={{
@@ -293,8 +327,16 @@ const PlaceDetails = () => {
                     <span
                       style={
                         data.openNow
-                          ? pillStyle("rgba(20,190,90,0.20)", "#d8ffe6", "1px solid rgba(255,255,255,0.22)")
-                          : pillStyle("rgba(255,80,80,0.20)", "#ffe2e2", "1px solid rgba(255,255,255,0.22)")
+                          ? pillStyle(
+                              "rgba(20,190,90,0.20)",
+                              "#d8ffe6",
+                              "1px solid rgba(255,255,255,0.22)"
+                            )
+                          : pillStyle(
+                              "rgba(255,80,80,0.20)",
+                              "#ffe2e2",
+                              "1px solid rgba(255,255,255,0.22)"
+                            )
                       }
                     >
                       {data.openNow ? "🟢 Open now" : "🔴 Closed"}
@@ -367,7 +409,7 @@ const PlaceDetails = () => {
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <ActionBtn
                       label="🗺️ Maps"
-                      href={data.googleMapsUrl || (source === "google" ? data.mapsUrl : "")}
+                      href={data.googleMapsUrl || data.mapsUrl || ""}
                       variant="dark"
                       onClick={() => alert("Maps not available")}
                     />
@@ -396,24 +438,46 @@ const PlaceDetails = () => {
                         whiteSpace: "pre-line",
                       }}
                     >
-                      {data.why ? <div style={{ marginBottom: data.highlight ? 8 : 0 }}>💡 {data.why}</div> : null}
+                      {data.why ? (
+                        <div style={{ marginBottom: data.highlight ? 8 : 0 }}>💡 {data.why}</div>
+                      ) : null}
                       {data.highlight ? <div>🔥 {data.highlight}</div> : null}
                     </div>
                   ) : null}
 
                   {/* tags row */}
                   <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {data.priceLevel ? <span style={pillStyle("#f7f7ff", "#2a2a2a", "1px solid #e9e9ff")}>💸 {data.priceLevel}</span> : null}
-                    {data.bestTime ? <span style={pillStyle("#f7fffb", "#2a2a2a", "1px solid #e6fff3")}>⏰ {data.bestTime}</span> : null}
-                    {data.instagrammable ? <span style={pillStyle("#fff7f7", "#2a2a2a", "1px solid #ffe6e6")}>📸 Instagrammable</span> : null}
+                    {data.priceLevel ? (
+                      <span style={pillStyle("#f7f7ff", "#2a2a2a", "1px solid #e9e9ff")}>
+                        💸 {data.priceLevel}
+                      </span>
+                    ) : null}
+                    {data.bestTime ? (
+                      <span style={pillStyle("#f7fffb", "#2a2a2a", "1px solid #e6fff3")}>
+                        ⏰ {data.bestTime}
+                      </span>
+                    ) : null}
+                    {data.instagrammable ? (
+                      <span style={pillStyle("#fff7f7", "#2a2a2a", "1px solid #ffe6e6")}>
+                        📸 Instagrammable
+                      </span>
+                    ) : null}
 
-                    {Array.isArray(data.tags) ? data.tags.slice(0, 8).map((t) => (
-                      <span key={t} style={pillStyle("#fafafa", "#2a2a2a", "1px solid #eee")}>#{t}</span>
-                    )) : null}
+                    {Array.isArray(data.tags)
+                      ? data.tags.slice(0, 8).map((t) => (
+                          <span key={t} style={pillStyle("#fafafa", "#2a2a2a", "1px solid #eee")}>
+                            #{t}
+                          </span>
+                        ))
+                      : null}
 
-                    {Array.isArray(data.activities) ? data.activities.slice(0, 6).map((a) => (
-                      <span key={a} style={pillStyle("#fafafa", "#2a2a2a", "1px solid #eee")}>🎯 {a}</span>
-                    )) : null}
+                    {Array.isArray(data.activities)
+                      ? data.activities.slice(0, 6).map((a) => (
+                          <span key={a} style={pillStyle("#fafafa", "#2a2a2a", "1px solid #eee")}>
+                            🎯 {a}
+                          </span>
+                        ))
+                      : null}
                   </div>
                 </div>
 
@@ -467,7 +531,12 @@ const PlaceDetails = () => {
                             src={src}
                             alt="place"
                             loading="lazy"
-                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              display: "block",
+                            }}
                           />
                           {idx === 8 && photos.length > 9 ? (
                             <div
@@ -508,7 +577,7 @@ const PlaceDetails = () => {
                       </div>
                     ) : null}
 
-                    {(data.address || data.location) ? (
+                    {data.address || data.location ? (
                       <div style={{ padding: 12, borderRadius: 14, border: "1px solid #eee", background: "#fafafa" }}>
                         <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>Address</div>
                         <div style={{ marginTop: 4, fontWeight: 800, ...clamp(3) }}>
@@ -553,7 +622,7 @@ const PlaceDetails = () => {
                       >
                         {data.weekdayText.map((t, idx) => (
                           <div
-                            key={t}
+                            key={`${t}-${idx}`}
                             style={{
                               padding: "10px 12px",
                               borderBottom: idx === data.weekdayText.length - 1 ? "none" : "1px solid #eee",
@@ -573,23 +642,6 @@ const PlaceDetails = () => {
           ) : null}
         </div>
       </div>
-
-      {/* Sticky bottom actions (mobile) */}
-      {!loading && data ? (
-        <div className="_pdSticky" style={{ display: "none" }}>
-          <button onClick={() => navigate(-1)} style={{ ...stickyBtn, background: "#fff" }}>
-            ← Back
-          </button>
-          <a
-            href={data.googleMapsUrl || ""}
-            target="_blank"
-            rel="noreferrer"
-            style={{ ...stickyBtn, background: "#111", color: "#fff", borderColor: "#111" }}
-          >
-            🗺️ Maps
-          </a>
-        </div>
-      ) : null}
 
       {/* Viewer Modal */}
       {viewerOpen ? (
@@ -704,53 +756,10 @@ const PlaceDetails = () => {
             ._pdGrid { grid-template-columns: 1fr !important; }
             ._pdGallery { grid-template-columns: repeat(2, 1fr) !important; }
           }
-          @media (max-width: 640px) {
-            ._pdGallery { grid-template-columns: repeat(2, 1fr) !important; }
-            ._pdSticky {
-              display: flex !important;
-              position: fixed;
-              left: 12px;
-              right: 12px;
-              bottom: 12px;
-              gap: 10px;
-              z-index: 999;
-              background: rgba(255,255,255,0.85);
-              border: 1px solid #eee;
-              box-shadow: 0 12px 28px rgba(0,0,0,0.12);
-              border-radius: 18px;
-              padding: 10px;
-              backdrop-filter: blur(10px);
-              -webkit-backdrop-filter: blur(10px);
-            }
-          }
         `}
       </style>
     </div>
   );
-};
-
-const navBtn = {
-  position: "absolute",
-  top: "50%",
-  transform: "translateY(-50%)",
-  padding: "10px 12px",
-  borderRadius: 999,
-  border: "1px solid rgba(255,255,255,0.18)",
-  background: "rgba(0,0,0,0.35)",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 1000,
-};
-
-const stickyBtn = {
-  flex: 1,
-  padding: "12px 12px",
-  borderRadius: 14,
-  border: "1px solid #e7e7e7",
-  fontWeight: 1000,
-  textAlign: "center",
-  textDecoration: "none",
-  cursor: "pointer",
 };
 
 export default PlaceDetails;
