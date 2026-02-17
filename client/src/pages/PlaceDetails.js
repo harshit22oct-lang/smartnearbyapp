@@ -138,7 +138,13 @@ const PlaceDetails = () => {
     return merged;
   }, [data]);
 
-  const heroImage = useMemo(() => (photos.length ? photos[0] : ""), [photos]);
+  const heroImage = useMemo(() => {
+  if (photos.length) return photos[0];
+
+  // ✅ fallback image if no photos returned
+  return "https://images.unsplash.com/photo-1521017432531-fbd92d768814?auto=format&fit=crop&w=1200&q=60";
+}, [photos]);
+
 
   const openViewer = (idx) => {
     if (!photos.length) return;
