@@ -728,42 +728,64 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Search bar */}
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ flex: 1 }} />
-            <div>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onBlur={() => setTimeout(saveDashState, 0)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") searchNow();
-                }}
-                placeholder={`Search in ${selectedCity}: cafe, gym, pizza... (or type "cafe in delhi")`}
-                style={{
-                  width: 420,
-                  maxWidth: "90vw",
-                  padding: 10,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                }}
-              />
-              <button
-                onClick={() => searchNow()}
-                style={{
-                  marginLeft: 10,
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  background: "#111",
-                  color: "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                Search
-              </button>
-            </div>
-          </div>
+{/* Search bar */}
+<div
+  style={{
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    flexWrap: "wrap",
+    marginTop: 10,
+  }}
+>
+  <div
+    style={{
+      display: "flex",
+      gap: 10,
+      width: "100%",
+      maxWidth: 720, // looks good on desktop too
+      marginLeft: "auto",
+      marginRight: "auto",
+    }}
+  >
+    <input
+      value={q}
+      onChange={(e) => setQ(e.target.value)}
+      onBlur={() => setTimeout(saveDashState, 0)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") searchNow();
+      }}
+      placeholder={`Search in ${selectedCity}: cafe, gym, pizza... (or type "cafe in delhi")`}
+      style={{
+        flex: 1,              // ✅ fills available width
+        minWidth: 0,          // ✅ prevents overflow on iOS
+        padding: 12,
+        borderRadius: 14,
+        border: "1px solid #ddd",
+        height: 44,           // ✅ consistent mobile height
+        fontSize: 15,
+      }}
+    />
+
+    <button
+      onClick={() => searchNow()}
+      style={{
+        padding: "0 16px",
+        height: 44,           // ✅ same height as input
+        borderRadius: 14,
+        border: "1px solid #ddd",
+        background: "#111",
+        color: "#fff",
+        cursor: "pointer",
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+      }}
+    >
+      Search
+    </button>
+  </div>
+</div>
+
 
           {/* ✅ Mood buttons (random keyword + keep city) */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
