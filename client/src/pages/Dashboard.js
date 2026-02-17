@@ -5,7 +5,6 @@ import PlaceCard from "../components/PlaceCard";
 
 const API = process.env.REACT_APP_API_URL;
 
-
 // ✅ Dashboard state persistence (so Back doesn't clear search)
 const DASH_KEY = "mn_dashboard_state_v1";
 const SAVE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
@@ -201,19 +200,7 @@ const Dashboard = () => {
   };
 
   const chip = (text) => (
-    <span
-      key={text}
-      style={{
-        display: "inline-block",
-        padding: "4px 10px",
-        borderRadius: 999,
-        border: "1px solid #e6e6e6",
-        background: "#fafafa",
-        fontSize: 12,
-        marginRight: 6,
-        marginTop: 6,
-      }}
-    >
+    <span key={text} className="mnChip">
       {text}
     </span>
   );
@@ -286,7 +273,6 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    // ✅ restore immediately so back keeps results
     restoreDashState();
     fetchProfile();
     fetchFavorites();
@@ -305,7 +291,6 @@ const Dashboard = () => {
       return;
     }
 
-    // Clear results only AFTER we know we will search
     setResults([]);
     setGoogleResults([]);
 
@@ -320,40 +305,28 @@ const Dashboard = () => {
     const keywordSafe = keyword || "";
     setQ(keywordSafe);
 
-    // Mongo curated
     try {
       const mongoRes = await axios.get(
-        `${API}/api/search?city=${encodeURIComponent(
-          normalizeCity(cityToUse)
-        )}&q=${encodeURIComponent(keywordSafe)}`,
+        `${API}/api/search?city=${encodeURIComponent(normalizeCity(cityToUse))}&q=${encodeURIComponent(
+          keywordSafe
+        )}`,
         authHeader
       );
-      const list = mongoRes.data || [];
-      setResults(list);
+      setResults(mongoRes.data || []);
     } catch (err) {
       setMsg(err?.response?.data?.message || "MongoDB search failed");
     }
 
-    // Google
     try {
       const gq = buildGoogleQuery(keywordSafe, cityToUse);
-      const googleRes = await axios.get(
-        `${API}/api/google?q=${encodeURIComponent(gq)}`,
-        authHeader
-      );
-      const glist = googleRes.data || [];
-      setGoogleResults(glist);
+      const googleRes = await axios.get(`${API}/api/google?q=${encodeURIComponent(gq)}`, authHeader);
+      setGoogleResults(googleRes.data || []);
     } catch (err) {
       setMsg((prev) => prev || err?.response?.data?.message || "Google search failed");
     }
 
-    // ✅ save after search
     setTimeout(() => {
-      saveDashState({
-        selectedCity: cityToUse,
-        q: keywordSafe,
-        scrollY: 0,
-      });
+      saveDashState({ selectedCity: cityToUse, q: keywordSafe, scrollY: 0 });
       window.scrollTo(0, 0);
     }, 0);
   };
@@ -380,11 +353,7 @@ const Dashboard = () => {
 
   const findFavoriteBusinessByPlaceId = (placeId) => {
     if (!placeId) return null;
-    return (
-      (favList || []).find(
-        (b) => (b.placeId || "").trim() === (placeId || "").trim()
-      ) || null
-    );
+    return (favList || []).find((b) => (b.placeId || "").trim() === (placeId || "").trim()) || null;
   };
 
   const deleteCurated = async (id) => {
@@ -400,7 +369,7 @@ const Dashboard = () => {
     }
   };
 
-  // ✅ Import Google -> Mongo (NOTE: backend must set city for new Business)
+  // ✅ Import Google -> Mongo
   const importGooglePlace = async (p) => {
     const res = await axios.post(
       `${API}/api/import`,
@@ -519,7 +488,6 @@ const Dashboard = () => {
 
       const payload = {
         city: normalizeCity(selectedCity),
-
         name: (name || "").trim(),
         category: (category || "").trim(),
         address: (address || "").trim(),
@@ -583,25 +551,17 @@ const Dashboard = () => {
     const active = normalizeCity(c) === normalizeCity(selectedCity);
     return (
       <button
+        className={`mnCityChip ${active ? "active" : ""}`}
         onClick={() => {
           setSelectedCity(c);
           setTimeout(() => saveDashState({ selectedCity: c }), 0);
+
           if ((q || "").trim()) searchNow(q);
           else {
             setResults([]);
             setGoogleResults([]);
             setTimeout(() => saveDashState({ results: [], googleResults: [] }), 0);
           }
-        }}
-        style={{
-          padding: "8px 12px",
-          borderRadius: 999,
-          border: `1px solid ${active ? "#111" : "#ddd"}`,
-          background: active ? "#111" : "#fff",
-          color: active ? "#fff" : "#111",
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-          fontSize: 13,
         }}
       >
         {c}
@@ -618,23 +578,164 @@ const Dashboard = () => {
   };
 
   return (
-    <div style={{ padding: 20, background: "#f6f7fb", minHeight: "100vh" }}>
-      <div
-        style={{
-          maxWidth: 1040,
-          margin: "0 auto",
-          background: "#fff",
-          borderRadius: 16,
-          padding: 18,
-          boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
-        }}
-      >
+    <div className="mnWrap">
+      <style>{`
+        .mnWrap{
+          min-height:100vh;
+          background:#f6f7fb;
+          padding:18px;
+        }
+        .mnShell{
+          max-width:1100px;
+          margin:0 auto;
+          background:#fff;
+          border-radius:18px;
+          padding:18px;
+          box-shadow:0 10px 28px rgba(0,0,0,0.06);
+          border:1px solid rgba(240,240,240,1);
+        }
+        .mnTop{
+          display:flex;
+          justify-content:space-between;
+          align-items:flex-start;
+          gap:12px;
+        }
+        .mnTitle{ margin:0; font-size:22px; }
+        .mnSub{ margin:6px 0 0; opacity:0.85; }
+        .mnLogout{
+          padding:10px 12px;
+          border-radius:12px;
+          border:1px solid #e5e7eb;
+          background:#fff;
+          cursor:pointer;
+          font-weight:800;
+        }
+        .mnMsg{
+          margin-top:12px;
+          padding:10px 12px;
+          border-radius:14px;
+          border:1px solid #eee;
+          background:#fafafa;
+          font-weight:700;
+        }
+        .mnCard{
+          border:1px solid #eee;
+          background:#fff;
+          border-radius:18px;
+          padding:14px;
+          box-shadow:0 10px 24px rgba(0,0,0,0.05);
+        }
+        .mnRow{
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          align-items:center;
+        }
+        .mnSelect{
+          padding:10px 12px;
+          border-radius:12px;
+          border:1px solid #e5e7eb;
+          background:#fff;
+          font-weight:700;
+        }
+        .mnCityBar{
+          display:flex;
+          gap:10px;
+          overflow-x:auto;
+          padding:6px 2px 2px;
+          -webkit-overflow-scrolling:touch;
+        }
+        .mnCityChip{
+          padding:9px 12px;
+          border-radius:999px;
+          border:1px solid #ddd;
+          background:#fff;
+          cursor:pointer;
+          white-space:nowrap;
+          font-size:13px;
+          font-weight:800;
+        }
+        .mnCityChip.active{
+          background:#111;
+          color:#fff;
+          border-color:#111;
+        }
+        .mnSearchRow{
+          display:flex;
+          gap:10px;
+          align-items:center;
+          margin-top:10px;
+        }
+        .mnInput{
+          flex:1;
+          min-width:220px;
+          padding:12px 12px;
+          border-radius:14px;
+          border:1px solid #e5e7eb;
+          outline:none;
+          font-weight:700;
+        }
+        .mnBtn{
+          padding:12px 14px;
+          border-radius:14px;
+          border:1px solid #111;
+          background:#111;
+          color:#fff;
+          cursor:pointer;
+          font-weight:900;
+          white-space:nowrap;
+        }
+        .mnMoodRow{
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          margin-top:12px;
+        }
+        .mnMood{
+          padding:9px 14px;
+          border-radius:999px;
+          border:1px solid #e5e7eb;
+          background:#fff;
+          cursor:pointer;
+          font-weight:800;
+        }
+        .mnGrid{
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:16px;
+          margin-top:14px;
+        }
+        .mnChip{
+          display:inline-block;
+          padding:5px 10px;
+          border-radius:999px;
+          border:1px solid #e6e6e6;
+          background:#fafafa;
+          font-size:12px;
+          margin-right:6px;
+          margin-top:6px;
+        }
+
+        /* ✅ MOBILE FIXES */
+        @media (max-width: 820px){
+          .mnWrap{ padding:12px; }
+          .mnShell{ padding:14px; }
+          .mnTop{ flex-direction:column; align-items:stretch; }
+          .mnLogout{ width:100%; }
+          .mnSearchRow{ flex-direction:column; align-items:stretch; }
+          .mnInput{ width:100%; min-width:0; }
+          .mnBtn{ width:100%; }
+          .mnGrid{ grid-template-columns:1fr; }
+        }
+      `}</style>
+
+      <div className="mnShell">
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="mnTop">
           <div>
-            <h2 style={{ margin: 0 }}>MoodNest</h2>
+            <h2 className="mnTitle">MoodNest</h2>
             {user ? (
-              <p style={{ margin: "6px 0", opacity: 0.85 }}>
+              <p className="mnSub">
                 Hey 👋, <b>{user.name || ""}</b>{" "}
                 {user.isAdmin ? (
                   <span
@@ -655,37 +756,30 @@ const Dashboard = () => {
           </div>
 
           <button
+            className="mnLogout"
             onClick={() => {
               sessionStorage.removeItem(DASH_KEY);
               localStorage.removeItem("token");
               window.location.href = "/login";
-            }}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "#fff",
-              cursor: "pointer",
             }}
           >
             Logout
           </button>
         </div>
 
-        {msg ? <p style={{ marginTop: 10 }}>{msg}</p> : null}
+        {msg ? <div className="mnMsg">{msg}</div> : null}
 
-        <hr style={{ margin: "16px 0" }} />
-
-        {/* Search */}
-        <div>
-          <h3 style={{ margin: "0 0 10px 0" }}>Quick Mood Search</h3>
+        {/* Search Card */}
+        <div className="mnCard" style={{ marginTop: 14 }}>
+          <h3 style={{ margin: 0 }}>Quick Mood Search</h3>
 
           {/* City Selector */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-              <span style={{ opacity: 0.8, fontSize: 14 }}>Select City:</span>
+          <div style={{ marginTop: 12 }}>
+            <div className="mnRow" style={{ marginBottom: 10 }}>
+              <span style={{ opacity: 0.85, fontSize: 14, fontWeight: 800 }}>Select City:</span>
 
               <select
+                className="mnSelect"
                 value={selectedCity}
                 onChange={(e) => {
                   setSelectedCity(e.target.value);
@@ -698,12 +792,6 @@ const Dashboard = () => {
                     setTimeout(() => saveDashState({ results: [], googleResults: [] }), 0);
                   }
                 }}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  background: "#fff",
-                }}
               >
                 {CITY_LIST.map((c) => (
                   <option key={c} value={c}>
@@ -713,15 +801,7 @@ const Dashboard = () => {
               </select>
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                overflowX: "auto",
-                paddingBottom: 6,
-                WebkitOverflowScrolling: "touch",
-              }}
-            >
+            <div className="mnCityBar">
               {CITY_LIST.map((c) => (
                 <CityChip key={c} c={c} />
               ))}
@@ -729,60 +809,33 @@ const Dashboard = () => {
           </div>
 
           {/* Search bar */}
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ flex: 1 }} />
-            <div>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onBlur={() => setTimeout(saveDashState, 0)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") searchNow();
-                }}
-                placeholder={`Search in ${selectedCity}: cafe, gym, pizza... (or type "cafe in delhi")`}
-                style={{
-                  width: 420,
-                  maxWidth: "90vw",
-                  padding: 10,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                }}
-              />
-              <button
-                onClick={() => searchNow()}
-                style={{
-                  marginLeft: 10,
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  background: "#111",
-                  color: "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                Search
-              </button>
-            </div>
+          <div className="mnSearchRow">
+            <input
+              className="mnInput"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onBlur={() => setTimeout(saveDashState, 0)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") searchNow();
+              }}
+              placeholder={`Search in ${selectedCity}: cafe, gym, pizza... (or type "cafe in delhi")`}
+            />
+            <button className="mnBtn" onClick={() => searchNow()}>
+              Search
+            </button>
           </div>
 
-          {/* ✅ Mood buttons (random keyword + keep city) */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+          {/* Mood buttons */}
+          <div className="mnMoodRow">
             {moods.map((m) => (
               <button
                 key={m.label}
+                className="mnMood"
                 onClick={() => {
                   const randomKeyword = m.keywords[Math.floor(Math.random() * m.keywords.length)];
                   const fullQuery = `${randomKeyword} in ${selectedCity}`;
                   setQ(randomKeyword);
                   searchNow(fullQuery);
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 999,
-                  border: "1px solid #ddd",
-                  background: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 700,
                 }}
               >
                 {m.label}
@@ -791,12 +844,10 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <hr style={{ margin: "18px 0" }} />
-
         {/* Results */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+        <div className="mnGrid">
           {/* Mongo */}
-          <div>
+          <div className="mnCard">
             <h3 style={{ marginTop: 0 }}>MoodNest (Recommended)</h3>
 
             {results.length === 0 ? (
@@ -817,8 +868,7 @@ const Dashboard = () => {
                 const tagChips = (b.tags || []).slice(0, 4).map((t) => chip(`#${t}`));
                 const actChips = (b.activities || []).slice(0, 3).map((a) => chip(`🎯 ${a}`));
 
-                const extraLine =
-                  (b.why ? `💡 ${b.why}` : "") + (b.highlight ? `\n🔥 ${b.highlight}` : "");
+                const extraLine = (b.why ? `💡 ${b.why}` : "") + (b.highlight ? `\n🔥 ${b.highlight}` : "");
 
                 return (
                   <div key={b._id}>
@@ -830,7 +880,7 @@ const Dashboard = () => {
                       subtitle2={extraLine || (b.category ? `Category: ${b.category}` : "")}
                       rightTop={ratingText || (isFav(b._id) ? "Saved" : "Curated")}
                       buttonText={user?.isAdmin ? "🗑 Delete" : isFav(b._id) ? "Remove" : "Save"}
-                      onOpen={() => openDetails(`/place/mongo/${b._id}`)} // ✅ keeps state
+                      onOpen={() => openDetails(`/place/mongo/${b._id}`)}
                       onAction={(e) => {
                         e?.stopPropagation?.();
                         if (user?.isAdmin) deleteCurated(b._id);
@@ -852,7 +902,7 @@ const Dashboard = () => {
           </div>
 
           {/* Google */}
-          <div>
+          <div className="mnCard">
             <h3 style={{ marginTop: 0 }}>Google Places (Live)</h3>
 
             {googleResults.length === 0 ? (
@@ -872,7 +922,7 @@ const Dashboard = () => {
                       subtitle2=""
                       rightTop={saved ? "✅ Saved" : ratingText}
                       buttonText={saved ? "Unsave" : "⭐ Save"}
-                      onOpen={() => openDetails(`/place/google/${p.placeId}`)} // ✅ keeps state
+                      onOpen={() => openDetails(`/place/google/${p.placeId}`)}
                       onAction={(e) => {
                         e?.stopPropagation?.();
                         toggleGoogleSave(p);
@@ -885,71 +935,50 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <hr style={{ margin: "18px 0" }} />
-
         {/* Favorites */}
-        <h3>Saved / Favorites</h3>
-        {favList.length === 0 ? (
-          <p style={{ opacity: 0.7 }}>No favorites yet.</p>
-        ) : (
-          favList.map((b) => (
-            <div key={b._id}>
-              <PlaceCard
-                imageUrl={mongoImg(b)}
-                badgeText="Saved"
-                title={b.name}
-                subtitle1={b.address || b.location || "-"}
-                subtitle2={b.why ? `💡 ${b.why}` : b.category ? `Category: ${b.category}` : ""}
-                rightTop={b.rating ? `⭐ ${b.rating}` : "Saved"}
-                buttonText={"Remove"}
-                onOpen={() => openDetails(`/place/mongo/${b._id}`)} // ✅ keeps state
-                onAction={(e) => {
-                  e?.stopPropagation?.();
-                  toggleFavorite(b._id);
-                }}
-              />
-            </div>
-          ))
-        )}
+        <div className="mnCard" style={{ marginTop: 14 }}>
+          <h3 style={{ marginTop: 0 }}>Saved / Favorites</h3>
+          {favList.length === 0 ? (
+            <p style={{ opacity: 0.7 }}>No favorites yet.</p>
+          ) : (
+            favList.map((b) => (
+              <div key={b._id}>
+                <PlaceCard
+                  imageUrl={mongoImg(b)}
+                  badgeText="Saved"
+                  title={b.name}
+                  subtitle1={b.address || b.location || "-"}
+                  subtitle2={b.why ? `💡 ${b.why}` : b.category ? `Category: ${b.category}` : ""}
+                  rightTop={b.rating ? `⭐ ${b.rating}` : "Saved"}
+                  buttonText={"Remove"}
+                  onOpen={() => openDetails(`/place/mongo/${b._id}`)}
+                  onAction={(e) => {
+                    e?.stopPropagation?.();
+                    toggleFavorite(b._id);
+                  }}
+                />
+              </div>
+            ))
+          )}
+        </div>
 
-        {/* Admin form */}
+        {/* Admin form (kept same logic, just wrapped nicely) */}
         {user?.isAdmin ? (
-          <>
-            <hr style={{ margin: "18px 0" }} />
-            <h3>Add Recommended Place (Only For Admin)</h3>
-
+          <div className="mnCard" style={{ marginTop: 14 }}>
+            <h3 style={{ marginTop: 0 }}>Add Recommended Place (Only For Admin)</h3>
             <p style={{ marginTop: 0, opacity: 0.8, fontSize: 13 }}>
               City for this curated card: <b>{selectedCity}</b>
             </p>
 
-            <form onSubmit={addBusiness} style={{ maxWidth: 760 }}>
-              {/* Basic */}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <form onSubmit={addBusiness} style={{ maxWidth: 820 }}>
+              <div className="mnRow">
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Place name (required)"
-                  style={{
-                    flex: 1,
-                    minWidth: 260,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
+                  className="mnInput"
                 />
-
-                <select
-                  value={emoji}
-                  onChange={(e) => setEmoji(e.target.value)}
-                  style={{
-                    width: 120,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
-                >
+                <select className="mnSelect" value={emoji} onChange={(e) => setEmoji(e.target.value)}>
                   <option value="☕">☕ Cozy</option>
                   <option value="🌿">🌿 Nature</option>
                   <option value="🌙">🌙 Night Out</option>
@@ -965,17 +994,7 @@ const Dashboard = () => {
                   <option value="✨">✨ Vibes</option>
                 </select>
 
-                <select
-                  value={vibe}
-                  onChange={(e) => setVibe(e.target.value)}
-                  style={{
-                    width: 180,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
-                >
+                <select className="mnSelect" value={vibe} onChange={(e) => setVibe(e.target.value)}>
                   <option value="Hidden Gems">💎 Hidden Gems</option>
                   <option value="Top Rated">⭐ Top Rated</option>
                   <option value="Trending Now">🔥 Trending Now</option>
@@ -986,32 +1005,15 @@ const Dashboard = () => {
                 </select>
               </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div className="mnRow" style={{ marginTop: 10 }}>
                 <input
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   placeholder="Category (Cafe/Gym/Restaurant)"
-                  style={{
-                    flex: 1,
-                    minWidth: 220,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
+                  className="mnInput"
                 />
 
-                <select
-                  value={rating}
-                  onChange={(e) => setRating(e.target.value)}
-                  style={{
-                    width: 180,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
-                >
+                <select className="mnSelect" value={rating} onChange={(e) => setRating(e.target.value)}>
                   <option value="">⭐ Any Rating</option>
                   <option value="4.5">⭐ 4.5+ Best Rated</option>
                   <option value="4.0">⭐ 4.0+ Rising Star</option>
@@ -1019,33 +1021,13 @@ const Dashboard = () => {
                   <option value="3.0">⭐ 3.0+ Average</option>
                 </select>
 
-                <select
-                  value={priceLevel}
-                  onChange={(e) => setPriceLevel(e.target.value)}
-                  style={{
-                    width: 160,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
-                >
+                <select className="mnSelect" value={priceLevel} onChange={(e) => setPriceLevel(e.target.value)}>
                   <option value="Essential">Essential ⚡</option>
                   <option value="Signature">Signature 🌟</option>
                   <option value="Elite">Elite 👑</option>
                 </select>
 
-                <select
-                  value={bestTime}
-                  onChange={(e) => setBestTime(e.target.value)}
-                  style={{
-                    width: 170,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
-                >
+                <select className="mnSelect" value={bestTime} onChange={(e) => setBestTime(e.target.value)}>
                   <option value="Morning">🌅 Morning Picks</option>
                   <option value="Afternoon">☀️ Day Explorer</option>
                   <option value="Evening">🌇 Evening Vibes</option>
@@ -1057,41 +1039,39 @@ const Dashboard = () => {
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder="Full Address"
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  marginBottom: 10,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                }}
+                className="mnInput"
+                style={{ marginTop: 10 }}
               />
 
-              {/* Multi photo */}
+              {/* Multi photo upload UI remains same (your existing block) */}
               <div
                 style={{
                   border: "1px solid #e9e9e9",
                   borderRadius: 16,
                   padding: 12,
-                  marginBottom: 12,
+                  marginTop: 12,
                   background: "#fafafa",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div className="mnRow" style={{ justifyContent: "space-between" }}>
                   <div>
                     <div style={{ fontWeight: 900, marginBottom: 4 }}>Photos (multiple)</div>
-                    <div style={{ fontSize: 12.5, opacity: 0.75 }}>Add local photos (upload) + photo URLs.</div>
+                    <div style={{ fontSize: 12.5, opacity: 0.75 }}>
+                      Add local photos (upload) + photo URLs.
+                    </div>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     style={{
-                      padding: "9px 12px",
+                      padding: "10px 12px",
                       borderRadius: 12,
                       border: "1px solid #ddd",
                       background: "#fff",
                       cursor: "pointer",
-                      fontWeight: 700,
+                      fontWeight: 800,
+                      width: "fit-content",
                     }}
                   >
                     📁 Choose files
@@ -1149,7 +1129,7 @@ const Dashboard = () => {
                     }}
                   />
 
-                  <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                  <div className="mnRow" style={{ marginTop: 8 }}>
                     <button
                       type="button"
                       onClick={() => {
@@ -1157,15 +1137,8 @@ const Dashboard = () => {
                         setUrlImages(urls);
                         setMsg(urls.length ? `✅ Added ${urls.length} URL images` : "No valid URLs found");
                       }}
-                      style={{
-                        padding: "9px 12px",
-                        borderRadius: 12,
-                        border: "1px solid #ddd",
-                        background: "#111",
-                        color: "#fff",
-                        cursor: "pointer",
-                        fontWeight: 800,
-                      }}
+                      className="mnBtn"
+                      style={{ borderRadius: 12 }}
                     >
                       Add URL Images
                     </button>
@@ -1177,19 +1150,21 @@ const Dashboard = () => {
                         setUrlImages([]);
                       }}
                       style={{
-                        padding: "9px 12px",
-                        borderRadius: 12,
-                        border: "1px solid #ddd",
+                        padding: "12px 14px",
+                        borderRadius: 14,
+                        border: "1px solid #e5e7eb",
                         background: "#fff",
                         cursor: "pointer",
-                        fontWeight: 700,
+                        fontWeight: 900,
                       }}
                     >
                       Clear URLs
                     </button>
 
                     {uploading ? (
-                      <span style={{ fontSize: 13, opacity: 0.8, alignSelf: "center" }}>Uploading...</span>
+                      <span style={{ fontSize: 13, opacity: 0.8, alignSelf: "center" }}>
+                        Uploading...
+                      </span>
                     ) : null}
                   </div>
                 </div>
@@ -1282,33 +1257,18 @@ const Dashboard = () => {
                 ) : null}
               </div>
 
-              {/* optional old fields */}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div className="mnRow" style={{ marginTop: 10 }}>
                 <input
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
                   placeholder="(Optional) Single Image URL (old field)"
-                  style={{
-                    flex: 1,
-                    minWidth: 260,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
+                  className="mnInput"
                 />
                 <input
                   value={photoRef}
                   onChange={(e) => setPhotoRef(e.target.value)}
                   placeholder="(Optional) Google photoRef (old field)"
-                  style={{
-                    flex: 1,
-                    minWidth: 260,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
+                  className="mnInput"
                 />
               </div>
 
@@ -1316,90 +1276,59 @@ const Dashboard = () => {
                 value={why}
                 onChange={(e) => setWhy(e.target.value)}
                 placeholder="Why recommended? (e.g. Calm music + perfect for study)"
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  marginBottom: 10,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                }}
+                className="mnInput"
+                style={{ marginTop: 10 }}
               />
 
               <input
                 value={highlight}
                 onChange={(e) => setHighlight(e.target.value)}
                 placeholder="Highlight / Must try (e.g. Cold coffee, Pasta)"
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  marginBottom: 10,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                }}
+                className="mnInput"
+                style={{ marginTop: 10 }}
               />
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div className="mnRow" style={{ marginTop: 10 }}>
                 <input
                   value={tagsInput}
                   onChange={(e) => setTagsInput(e.target.value)}
                   placeholder="Tags (comma): Study, Aesthetic, Quiet"
-                  style={{
-                    flex: 1,
-                    minWidth: 260,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
+                  className="mnInput"
                 />
                 <input
                   value={activitiesInput}
                   onChange={(e) => setActivitiesInput(e.target.value)}
                   placeholder="Activities (comma): Open mic, Board games"
-                  style={{
-                    flex: 1,
-                    minWidth: 260,
-                    padding: 10,
-                    marginBottom: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                  }}
+                  className="mnInput"
                 />
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
                 <input
                   type="checkbox"
                   checked={instagrammable}
                   onChange={(e) => setInstagrammable(e.target.checked)}
                 />
-                <span style={{ fontSize: 14 }}>📸 Instagrammable</span>
+                <span style={{ fontSize: 14, fontWeight: 800 }}>📸 Instagrammable</span>
               </div>
 
               <input
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="Location (optional)"
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  marginBottom: 10,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                }}
+                className="mnInput"
+                style={{ marginTop: 10 }}
               />
 
               <button
                 type="submit"
                 disabled={uploading}
+                className="mnBtn"
                 style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
+                  marginTop: 10,
                   background: uploading ? "#666" : "#111",
-                  color: "#fff",
+                  borderColor: uploading ? "#666" : "#111",
                   cursor: uploading ? "not-allowed" : "pointer",
-                  fontWeight: 900,
                 }}
               >
                 {uploading ? "Uploading..." : "Add Curated Place"}
@@ -1409,7 +1338,7 @@ const Dashboard = () => {
                 Tip: Add photos using file upload or multiple URLs.
               </p>
             </form>
-          </>
+          </div>
         ) : null}
       </div>
     </div>
