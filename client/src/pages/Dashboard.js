@@ -5,6 +5,7 @@ import PlaceCard from "../components/PlaceCard";
 
 const API = process.env.REACT_APP_API_URL;
 
+
 // ✅ Dashboard state persistence (so Back doesn't clear search)
 const DASH_KEY = "mn_dashboard_state_v1";
 const SAVE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
@@ -285,6 +286,7 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
+    // ✅ restore immediately so back keeps results
     restoreDashState();
     fetchProfile();
     fetchFavorites();
@@ -303,6 +305,7 @@ const Dashboard = () => {
       return;
     }
 
+    // Clear results only AFTER we know we will search
     setResults([]);
     setGoogleResults([]);
 
@@ -317,6 +320,7 @@ const Dashboard = () => {
     const keywordSafe = keyword || "";
     setQ(keywordSafe);
 
+    // Mongo curated
     try {
       const mongoRes = await axios.get(
         `${API}/api/search?city=${encodeURIComponent(
@@ -330,6 +334,7 @@ const Dashboard = () => {
       setMsg(err?.response?.data?.message || "MongoDB search failed");
     }
 
+    // Google
     try {
       const gq = buildGoogleQuery(keywordSafe, cityToUse);
       const googleRes = await axios.get(
@@ -342,6 +347,7 @@ const Dashboard = () => {
       setMsg((prev) => prev || err?.response?.data?.message || "Google search failed");
     }
 
+    // ✅ save after search
     setTimeout(() => {
       saveDashState({
         selectedCity: cityToUse,
@@ -394,6 +400,7 @@ const Dashboard = () => {
     }
   };
 
+  // ✅ Import Google -> Mongo (NOTE: backend must set city for new Business)
   const importGooglePlace = async (p) => {
     const res = await axios.post(
       `${API}/api/import`,
@@ -604,10 +611,10 @@ const Dashboard = () => {
 
   const previewUrlForLocal = (file) => URL.createObjectURL(file);
 
-  // ✅ wrapper: save dashboard state before leaving + pass hero image to details
-  const openDetails = (path, state = {}) => {
+  // ✅ wrapper: save dashboard state before leaving
+  const openDetails = (path) => {
     saveDashState();
-    navigate(path, { state });
+    navigate(path);
   };
 
   return (
@@ -721,65 +728,66 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* ✅ Search bar (mobile-friendly) */}
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              flexWrap: "wrap",
-              marginTop: 10,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                width: "100%",
-                maxWidth: 720,
-                marginLeft: "auto",
-                marginRight: "auto",
-              }}
-            >
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onBlur={() => setTimeout(saveDashState, 0)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") searchNow();
-                }}
-                placeholder={`Search in ${selectedCity}: cafe, gym, pizza... (or type "cafe in delhi")`}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  padding: 12,
-                  borderRadius: 14,
-                  border: "1px solid #ddd",
-                  height: 44,
-                  fontSize: 15,
-                }}
-              />
+{/* Search bar */}
+<div
+  style={{
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    flexWrap: "wrap",
+    marginTop: 10,
+  }}
+>
+  <div
+    style={{
+      display: "flex",
+      gap: 10,
+      width: "100%",
+      maxWidth: 720, // looks good on desktop too
+      marginLeft: "auto",
+      marginRight: "auto",
+    }}
+  >
+    <input
+      value={q}
+      onChange={(e) => setQ(e.target.value)}
+      onBlur={() => setTimeout(saveDashState, 0)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") searchNow();
+      }}
+      placeholder={`Search in ${selectedCity}: cafe, gym, pizza... (or type "cafe in delhi")`}
+      style={{
+        flex: 1,              // ✅ fills available width
+        minWidth: 0,          // ✅ prevents overflow on iOS
+        padding: 12,
+        borderRadius: 14,
+        border: "1px solid #ddd",
+        height: 44,           // ✅ consistent mobile height
+        fontSize: 15,
+      }}
+    />
 
-              <button
-                onClick={() => searchNow()}
-                style={{
-                  padding: "0 16px",
-                  height: 44,
-                  borderRadius: 14,
-                  border: "1px solid #ddd",
-                  background: "#111",
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 800,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Search
-              </button>
-            </div>
-          </div>
+    <button
+      onClick={() => searchNow()}
+      style={{
+        padding: "0 16px",
+        height: 44,           // ✅ same height as input
+        borderRadius: 14,
+        border: "1px solid #ddd",
+        background: "#111",
+        color: "#fff",
+        cursor: "pointer",
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+      }}
+    >
+      Search
+    </button>
+  </div>
+</div>
 
-          {/* ✅ Mood buttons */}
+
+          {/* ✅ Mood buttons (random keyword + keep city) */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
             {moods.map((m) => (
               <button
@@ -834,25 +842,17 @@ const Dashboard = () => {
                 const extraLine =
                   (b.why ? `💡 ${b.why}` : "") + (b.highlight ? `\n🔥 ${b.highlight}` : "");
 
-                const heroUrl = mongoImg(b);
-
                 return (
                   <div key={b._id}>
                     <PlaceCard
-                      imageUrl={heroUrl}
+                      imageUrl={mongoImg(b)}
                       badgeText={badge}
                       title={b.name}
                       subtitle1={b.address || b.location || "-"}
                       subtitle2={extraLine || (b.category ? `Category: ${b.category}` : "")}
                       rightTop={ratingText || (isFav(b._id) ? "Saved" : "Curated")}
                       buttonText={user?.isAdmin ? "🗑 Delete" : isFav(b._id) ? "Remove" : "Save"}
-                      // ✅ PASS HERO IMAGE
-                      onOpen={() =>
-                        openDetails(`/place/mongo/${b._id}`, {
-                          heroUrl,
-                          heroName: b.name,
-                        })
-                      }
+                      onOpen={() => openDetails(`/place/mongo/${b._id}`)} // ✅ keeps state
                       onAction={(e) => {
                         e?.stopPropagation?.();
                         if (user?.isAdmin) deleteCurated(b._id);
@@ -894,13 +894,7 @@ const Dashboard = () => {
                       subtitle2=""
                       rightTop={saved ? "✅ Saved" : ratingText}
                       buttonText={saved ? "Unsave" : "⭐ Save"}
-                      // ✅ PASS HERO PHOTREF
-                      onOpen={() =>
-                        openDetails(`/place/google/${p.placeId}`, {
-                          heroPhotoRef: p.photoRef,
-                          heroName: p.name,
-                        })
-                      }
+                      onOpen={() => openDetails(`/place/google/${p.placeId}`)} // ✅ keeps state
                       onAction={(e) => {
                         e?.stopPropagation?.();
                         toggleGoogleSave(p);
@@ -920,33 +914,24 @@ const Dashboard = () => {
         {favList.length === 0 ? (
           <p style={{ opacity: 0.7 }}>No favorites yet.</p>
         ) : (
-          favList.map((b) => {
-            const heroUrl = mongoImg(b);
-            return (
-              <div key={b._id}>
-                <PlaceCard
-                  imageUrl={heroUrl}
-                  badgeText="Saved"
-                  title={b.name}
-                  subtitle1={b.address || b.location || "-"}
-                  subtitle2={b.why ? `💡 ${b.why}` : b.category ? `Category: ${b.category}` : ""}
-                  rightTop={b.rating ? `⭐ ${b.rating}` : "Saved"}
-                  buttonText={"Remove"}
-                  // ✅ PASS HERO IMAGE
-                  onOpen={() =>
-                    openDetails(`/place/mongo/${b._id}`, {
-                      heroUrl,
-                      heroName: b.name,
-                    })
-                  }
-                  onAction={(e) => {
-                    e?.stopPropagation?.();
-                    toggleFavorite(b._id);
-                  }}
-                />
-              </div>
-            );
-          })
+          favList.map((b) => (
+            <div key={b._id}>
+              <PlaceCard
+                imageUrl={mongoImg(b)}
+                badgeText="Saved"
+                title={b.name}
+                subtitle1={b.address || b.location || "-"}
+                subtitle2={b.why ? `💡 ${b.why}` : b.category ? `Category: ${b.category}` : ""}
+                rightTop={b.rating ? `⭐ ${b.rating}` : "Saved"}
+                buttonText={"Remove"}
+                onOpen={() => openDetails(`/place/mongo/${b._id}`)} // ✅ keeps state
+                onAction={(e) => {
+                  e?.stopPropagation?.();
+                  toggleFavorite(b._id);
+                }}
+              />
+            </div>
+          ))
         )}
 
         {/* Admin form */}
