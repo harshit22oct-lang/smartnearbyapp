@@ -6,6 +6,8 @@ import f2 from "../assets/f2.jpg";
 import f3 from "../assets/f3.jpg";
 import f4 from "../assets/f4.jpg";
 
+const API = process.env.REACT_APP_API_URL;
+
 const Login = () => {
   const [isRegister, setIsRegister] = useState(false);
 
@@ -14,9 +16,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
 
   const [msg, setMsg] = useState("");
-
-  // ✅ LIVE API from Vercel env (CRA)
-  const API = process.env.REACT_APP_API_URL;
+  const [busy, setBusy] = useState(false);
 
   const founders = useMemo(
     () => [
@@ -56,22 +56,29 @@ const Login = () => {
     e.preventDefault();
     setMsg("");
 
-    // ✅ If env var missing (common on Vercel if not set to Production or not redeployed)
     if (!API) {
-      setMsg(
-        "API URL missing. Add REACT_APP_API_URL in Vercel (Production) and redeploy."
-      );
+      setMsg("API URL missing. Set REACT_APP_API_URL in Vercel and redeploy.");
+      return;
+    }
+
+    if (!email || !password) {
+      setMsg("Please enter email and password.");
       return;
     }
 
     try {
-      const cleanName = name.trim();
-      const cleanEmail = email.trim();
+      setBusy(true);
 
       if (isRegister) {
+        if (!name.trim()) {
+          setMsg("Please enter your full name.");
+          setBusy(false);
+          return;
+        }
+
         const res = await axios.post(`${API}/api/auth/register`, {
-          name: cleanName,
-          email: cleanEmail,
+          name,
+          email,
           password,
         });
 
@@ -79,92 +86,82 @@ const Login = () => {
         setIsRegister(false);
         setName("");
         setPassword("");
+        setBusy(false);
         return;
       }
 
-      const res = await axios.post(`${API}/api/auth/login`, {
-        email: cleanEmail,
-        password,
-      });
-
+      const res = await axios.post(`${API}/api/auth/login`, { email, password });
       const token = res.data?.token;
+
       if (!token) {
-        setMsg("Login failed: token not received");
+        setMsg("Login failed: token not received.");
+        setBusy(false);
         return;
       }
 
       localStorage.setItem("token", token);
       window.location.href = "/dashboard";
     } catch (err) {
-      setMsg(err?.response?.data?.message || err?.message || "Something went wrong");
+      setMsg(err?.response?.data?.message || "Something went wrong");
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <div style={pageWrap}>
-      <div style={container}>
-        {/* TOP: HERO + LOGIN */}
-        <div style={topGrid}>
-          {/* Left: Branding */}
-          <div>
-            <div style={pill}>✨ MoodNest • Smart Place Recommender</div>
+    <div className="mn_login_page">
+      <div className="mn_login_container">
+        {/* HERO + FORM */}
+        <div className="mn_top_grid">
+          {/* LEFT HERO */}
+          <div className="mn_hero">
+            <div className="mn_pill">✨ MoodNest • Smart Place Discovery</div>
 
-            <h1 style={heroTitle}>
-              Your mood decides the{" "}
-              <span style={{ textDecoration: "underline" }}>destination</span>.
+            <h1 className="mn_title">
+              Your mood decides the <span className="mn_underline">destination</span>.
             </h1>
 
-            <p style={heroDesc}>
-              MoodNest helps you discover nearby places using a mix of{" "}
-              <b>curated recommendations</b> and <b>Google live results</b>. Search
-              cafes, gyms, restaurants, parks — or tap mood buttons for quick
-              picks.
+            <p className="mn_desc">
+              MoodNest helps you discover places using a mix of <b>curated recommendations</b> and{" "}
+              <b>Google live results</b>. Search cafes, gyms, restaurants, parks — or tap mood buttons for
+              quick picks.
             </p>
 
-            <div style={chipRow}>
-              {[
-                "Romantic 👀💕",
-                "Cozy ☕︎🍂˖",
-                "Study 📜",
-                "Nature ⛰️🍃˚",
-                "Budget 💸",
-                "Night ✨🌙",
-              ].map((t) => (
-                <span key={t} style={chip}>
+            <div className="mn_chip_row">
+              {["Romantic 💕", "Cozy ☕", "Study 📚", "Nature 🍃", "Budget 💸", "Night ✨"].map((t) => (
+                <span key={t} className="mn_chip">
                   {t}
                 </span>
               ))}
             </div>
+
+            <div className="mn_note">
+              🔮 Future plan: AI-powered day itinerary suggestions based on city + mood + budget.
+            </div>
           </div>
 
-          {/* Right: Login Card */}
-          <div style={loginCard}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-              }}
-            >
-              <h2 style={{ margin: 0 }}>{isRegister ? "Create Account" : "Login"}</h2>
-              <span style={tinyHint}>{isRegister ? "New here" : "Welcome back"}</span>
+          {/* RIGHT FORM */}
+          <div className="mn_card">
+            <div className="mn_card_header">
+              <div>
+                <h2 className="mn_card_title">{isRegister ? "Create Account" : "Login"}</h2>
+                <div className="mn_card_sub">
+                  {isRegister ? "Register and start exploring." : "Welcome back — sign in to continue."}
+                </div>
+              </div>
+
+              <span className="mn_badge">{isRegister ? "New" : "Secure"}</span>
             </div>
 
-            <p style={{ marginTop: 6, opacity: 0.75 }}>
-              {isRegister
-                ? "Register and start exploring."
-                : "Sign in to start exploring ᨒ𓂃☕︎‧˚"}
-            </p>
+            {msg ? <div className="mn_msg">{msg}</div> : null}
 
-            {msg ? <div style={msgBox}>{msg}</div> : null}
-
-            <form onSubmit={submit} style={{ marginTop: 12 }}>
+            <form onSubmit={submit} className="mn_form">
               {isRegister ? (
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Full name"
-                  style={inputStyle}
+                  className="mn_input"
                 />
               ) : null}
 
@@ -172,7 +169,7 @@ const Login = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Email"
-                style={inputStyle}
+                className="mn_input"
               />
 
               <input
@@ -180,333 +177,311 @@ const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
                 type="password"
-                style={inputStyle}
+                className="mn_input"
               />
 
-              <button type="submit" style={primaryBtn}>
-                {isRegister ? "Register" : "Login"}
+              <button type="submit" className="mn_btn_primary" disabled={busy}>
+                {busy ? "Please wait..." : isRegister ? "Register" : "Login"}
               </button>
 
               <button
                 type="button"
+                className="mn_btn_secondary"
                 onClick={() => {
                   setMsg("");
                   setIsRegister((p) => !p);
                 }}
-                style={secondaryBtn}
+                disabled={busy}
               >
                 {isRegister ? "Already have account? Login" : "New user? Create account"}
               </button>
 
-              <div style={tinyNote}>GoogleAuth Soon.</div>
-
-              {/* Optional debug (remove later) */}
-              {/* <div style={{ marginTop: 8, fontSize: 12, opacity: 0.6 }}>API: {API || "NOT SET"}</div> */}
+              <div className="mn_small_text">GoogleAuth Soon.</div>
             </form>
           </div>
         </div>
 
-        {/* ABOUT SECTION */}
-        <section style={{ marginTop: 30 }}>
-          <div style={sectionCard}>
-            <h2 style={{ marginTop: 0 }}>About MoodNest </h2>
-
-            <p style={{ marginTop: 6, opacity: 0.85, lineHeight: 1.6 }}>
-              MoodNest is a MERN-based web app 🌐that helps users discover places near them.
-              It combines <b>curated recommendations</b> (handpicked by admin) with{" "}
-              <b>live Google results</b>. Users can search, explore place details,
-              and save favorites for later.
-            </p>
-
-            <div style={miniGrid}>
-              <div style={miniCard}>
-                <div style={{ fontSize: 22 }}>🛡️</div>
-                <b>Secure Login</b>
-                <div style={miniDesc}>JWT auth + protected routes</div>
-              </div>
-              <div style={miniCard}>
-                <div style={{ fontSize: 22 }}>📍</div>
-                <b>Smart Search</b>
-                <div style={miniDesc}>Curated + Google live results</div>
-              </div>
-              <div style={miniCard}>
-                <div style={{ fontSize: 22 }}>⭐</div>
-                <b>Favorites</b>
-                <div style={miniDesc}>Save places you love</div>
-              </div>
+        {/* FOUNDERS */}
+        <div className="mn_section">
+          <div className="mn_section_card">
+            <div className="mn_section_head">
+              <h2 className="mn_section_title">Founders</h2>
+              <p className="mn_section_desc">Team behind MoodNest.</p>
             </div>
-          </div>
-        </section>
 
-        {/* FOUNDERS SECTION */}
-        <section style={{ marginTop: 18, marginBottom: 30 }}>
-          <div style={sectionCard}>
-            <h2 style={{ marginTop: 0 }}>Founders</h2>
-            <p style={{ marginTop: 6, opacity: 0.8 }}>Team behind MoodNest .</p>
-
-            <div style={foundersGrid}>
+            <div className="mn_founders_grid">
               {founders.map((f) => (
                 <FounderCard key={f.name} f={f} />
               ))}
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
-              <b>© 2026 MoodNest LLC All rights reserved</b>.
+            <div className="mn_footer_note">
+              <b>© 2026 MoodNest</b> — All rights reserved.
             </div>
           </div>
-        </section>
+        </div>
       </div>
+
+      <style>{css}</style>
     </div>
   );
 };
 
 const FounderCard = ({ f }) => {
-  const [hover, setHover] = useState(false);
-
   return (
-    <div
-      style={{
-        ...founderCard,
-        transform: hover ? "translateY(-6px)" : "translateY(0px)",
-        boxShadow: hover ? "0 16px 35px rgba(0,0,0,0.12)" : founderCard.boxShadow,
-        border: hover ? "1px solid #e7e7ff" : founderCard.border,
-      }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      {/* Modern Rectangular Photo */}
-      <div style={photoWrapper}>
-        <img
-          src={f.photo}
-          alt={f.name}
-          style={{
-            ...photoStyle,
-            transform: hover ? "scale(1.08)" : "scale(1)",
-          }}
-        />
+    <div className="mn_founder_card">
+      <div className="mn_photo_wrap">
+        <img src={f.photo} alt={f.name} className="mn_photo" />
       </div>
 
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 800, fontSize: 15 }}>{f.name}</div>
-        <div style={{ fontSize: 13, opacity: 0.72, marginTop: 3 }}>{f.branch}</div>
+      <div className="mn_founder_name">{f.name}</div>
+      <div className="mn_founder_branch">{f.branch}</div>
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 12 }}>
-          <a
-            href={f.linkedin}
-            target="_blank"
-            rel="noreferrer"
-            style={socialBtn}
-            aria-label={`${f.name} LinkedIn`}
-            title="LinkedIn"
-          >
-            in
-          </a>
-          <a
-            href={f.instagram}
-            target="_blank"
-            rel="noreferrer"
-            style={socialBtn}
-            aria-label={`${f.name} Instagram`}
-            title="Instagram"
-          >
-            ig
-          </a>
-        </div>
+      <div className="mn_social_row">
+        <a href={f.linkedin} target="_blank" rel="noreferrer" className="mn_social">
+          in
+        </a>
+        <a href={f.instagram} target="_blank" rel="noreferrer" className="mn_social">
+          ig
+        </a>
       </div>
     </div>
   );
 };
 
-/* ------------------ STYLES ------------------ */
+const css = `
+  .mn_login_page{
+    min-height:100vh;
+    background:
+      radial-gradient(1100px 600px at 20% 10%, rgba(17,24,39,0.10), transparent),
+      radial-gradient(900px 500px at 90% 20%, rgba(99,102,241,0.12), transparent),
+      #f6f7fb;
+    padding: 18px;
+  }
 
-const pageWrap = {
-  minHeight: "100vh",
-  background:
-    "radial-gradient(1200px 600px at 20% 10%, rgba(17,24,39,0.10), transparent), radial-gradient(900px 500px at 90% 20%, rgba(99,102,241,0.12), transparent), #f6f7fb",
-  padding: 24,
-};
+  .mn_login_container{
+    max-width: 1100px;
+    margin: 0 auto;
+  }
 
-const container = {
-  maxWidth: 1100,
-  margin: "0 auto",
-};
+  .mn_top_grid{
+    display:grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 18px;
+    align-items: center;
+    min-height: 78vh;
+  }
 
-const topGrid = {
-  display: "grid",
-  gridTemplateColumns: "1.2fr 1fr",
-  gap: 22,
-  alignItems: "center",
-  minHeight: "80vh",
-};
+  .mn_pill{
+    display:inline-block;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    background: rgba(255,255,255,0.92);
+    font-size: 13px;
+    backdrop-filter: blur(8px);
+  }
 
-const pill = {
-  display: "inline-block",
-  padding: "6px 12px",
-  borderRadius: 999,
-  border: "1px solid #e5e7eb",
-  background: "rgba(255,255,255,0.9)",
-  fontSize: 13,
-  backdropFilter: "blur(6px)",
-};
+  .mn_title{
+    margin: 14px 0 10px;
+    font-size: 44px;
+    line-height: 1.08;
+  }
 
-const heroTitle = {
-  margin: "14px 0 10px",
-  fontSize: 44,
-  lineHeight: 1.1,
-};
+  .mn_underline{ text-decoration: underline; }
 
-const heroDesc = {
-  margin: 0,
-  opacity: 0.82,
-  fontSize: 16,
-  maxWidth: 560,
-  lineHeight: 1.55,
-};
+  .mn_desc{
+    margin: 0;
+    opacity: 0.82;
+    font-size: 16px;
+    line-height: 1.55;
+    max-width: 560px;
+  }
 
-const chipRow = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  marginTop: 16,
-};
+  .mn_chip_row{
+    display:flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
 
-const chip = {
-  padding: "7px 12px",
-  borderRadius: 999,
-  border: "1px solid #e5e7eb",
-  background: "rgba(255,255,255,0.9)",
-  fontSize: 13,
-  backdropFilter: "blur(6px)",
-};
+  .mn_chip{
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    background: rgba(255,255,255,0.92);
+    font-size: 13px;
+    backdrop-filter: blur(8px);
+  }
 
-const loginCard = {
-  background: "rgba(255,255,255,0.92)",
-  borderRadius: 20,
-  padding: 24,
-  boxShadow: "0 14px 35px rgba(0,0,0,0.10)",
-  border: "1px solid rgba(229,231,235,0.9)",
-  backdropFilter: "blur(10px)",
-};
+  .mn_note{
+    margin-top: 14px;
+    font-size: 13px;
+    opacity: 0.75;
+    max-width: 560px;
+  }
 
-const tinyHint = { fontSize: 12, opacity: 0.65 };
+  .mn_card{
+    background: rgba(255,255,255,0.94);
+    border-radius: 20px;
+    padding: 22px;
+    box-shadow: 0 14px 35px rgba(0,0,0,0.10);
+    border: 1px solid rgba(229,231,235,0.9);
+    backdrop-filter: blur(10px);
+  }
 
-const msgBox = {
-  marginTop: 10,
-  padding: 10,
-  borderRadius: 12,
-  border: "1px solid #eee",
-  background: "#fafafa",
-  fontSize: 14,
-};
+  .mn_card_header{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap: 12px;
+  }
 
-const inputStyle = {
-  width: "100%",
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #e5e7eb",
-  marginTop: 10,
-  outline: "none",
-};
+  .mn_card_title{ margin:0; }
+  .mn_card_sub{ margin-top: 6px; font-size: 13px; opacity: 0.75; }
 
-const primaryBtn = {
-  width: "100%",
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #111",
-  background: "#111",
-  color: "#fff",
-  marginTop: 12,
-  cursor: "pointer",
-  fontWeight: 700,
-};
+  .mn_badge{
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    opacity: 0.9;
+  }
 
-const secondaryBtn = {
-  width: "100%",
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #e5e7eb",
-  background: "#fff",
-  marginTop: 10,
-  cursor: "pointer",
-  fontWeight: 700,
-};
+  .mn_msg{
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid #eee;
+    background: #fafafa;
+    font-size: 14px;
+    line-height: 1.35;
+  }
 
-const tinyNote = { marginTop: 10, fontSize: 12, opacity: 0.7 };
+  .mn_form{ margin-top: 12px; }
 
-const sectionCard = {
-  background: "rgba(255,255,255,0.95)",
-  borderRadius: 20,
-  padding: 20,
-  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
-  border: "1px solid rgba(240,240,240,1)",
-  backdropFilter: "blur(8px)",
-};
+  .mn_input{
+    width:100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    margin-top: 10px;
+    outline: none;
+    background: #fff;
+  }
 
-const miniGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
-  gap: 12,
-  marginTop: 14,
-};
+  .mn_btn_primary{
+    width:100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid #111;
+    background: #111;
+    color: #fff;
+    margin-top: 12px;
+    cursor: pointer;
+    font-weight: 800;
+  }
 
-const miniCard = {
-  border: "1px solid #eee",
-  borderRadius: 16,
-  padding: 14,
-  background: "#ffffff",
-  boxShadow: "0 8px 18px rgba(0,0,0,0.05)",
-};
+  .mn_btn_primary:disabled{
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
 
-const miniDesc = { fontSize: 13, opacity: 0.75, marginTop: 4 };
+  .mn_btn_secondary{
+    width:100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    margin-top: 10px;
+    cursor: pointer;
+    font-weight: 800;
+  }
 
-const foundersGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(4, 1fr)",
-  gap: 14,
-  marginTop: 14,
-};
+  .mn_btn_secondary:disabled{
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
 
-const founderCard = {
-  border: "1px solid #eee",
-  borderRadius: 20,
-  padding: 16,
-  background: "linear-gradient(145deg, #ffffff, #f3f4f6)",
-  boxShadow: "0 10px 22px rgba(0,0,0,0.08)",
-  textAlign: "center",
-  transition: "all 0.25s ease",
-  fontFamily: "'Outfit', sans-serif",
-};
+  .mn_small_text{ margin-top: 10px; font-size: 12px; opacity: 0.7; text-align:center; }
 
-const photoWrapper = {
-  width: "100%",
-  height: 260,
-  borderRadius: 16,
-  overflow: "hidden",
-  border: "1px solid #eee",
-  background: "#f9fafb",
-};
+  .mn_section{ margin-top: 18px; margin-bottom: 28px; }
 
-const photoStyle = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-  transition: "transform 0.4s ease",
-};
+  .mn_section_card{
+    background: rgba(255,255,255,0.95);
+    border-radius: 20px;
+    padding: 18px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.07);
+    border: 1px solid rgba(240,240,240,1);
+  }
 
-const socialBtn = {
-  width: 40,
-  height: 40,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 12,
-  border: "1px solid #e5e7eb",
-  background: "#f9fafb",
-  textDecoration: "none",
-  color: "#111",
-  fontWeight: 800,
-  fontSize: 13,
-  transition: "all 0.2s ease",
-};
+  .mn_section_head{ display:flex; align-items:baseline; justify-content:space-between; gap: 10px; }
+  .mn_section_title{ margin:0; }
+  .mn_section_desc{ margin:0; opacity:0.75; }
+
+  .mn_founders_grid{
+    margin-top: 14px;
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .mn_founder_card{
+    border: 1px solid #eee;
+    border-radius: 18px;
+    padding: 14px;
+    background: linear-gradient(145deg, #ffffff, #f3f4f6);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.08);
+    text-align:center;
+  }
+
+  .mn_photo_wrap{
+    width:100%;
+    height: 220px;
+    border-radius: 16px;
+    overflow:hidden;
+    border: 1px solid #eee;
+    background:#f9fafb;
+  }
+
+  .mn_photo{ width:100%; height:100%; object-fit:cover; display:block; }
+
+  .mn_founder_name{ margin-top: 10px; font-weight: 900; }
+  .mn_founder_branch{ margin-top: 4px; font-size: 13px; opacity: 0.72; }
+
+  .mn_social_row{ display:flex; justify-content:center; gap: 10px; margin-top: 12px; }
+
+  .mn_social{
+    width: 40px; height: 40px;
+    display:inline-flex; align-items:center; justify-content:center;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    text-decoration: none;
+    color: #111;
+    font-weight: 900;
+  }
+
+  .mn_footer_note{ margin-top: 12px; font-size: 12px; opacity: 0.7; }
+
+  /* ✅ MOBILE */
+  @media (max-width: 980px){
+    .mn_top_grid{ grid-template-columns: 1fr; min-height: auto; }
+    .mn_title{ font-size: 34px; line-height: 1.1; }
+    .mn_desc{ max-width: 100%; }
+    .mn_founders_grid{ grid-template-columns: repeat(2, 1fr); }
+    .mn_photo_wrap{ height: 200px; }
+  }
+
+  @media (max-width: 520px){
+    .mn_login_page{ padding: 12px; }
+    .mn_title{ font-size: 28px; }
+    .mn_card{ padding: 18px; }
+    .mn_founders_grid{ grid-template-columns: 1fr; }
+    .mn_photo_wrap{ height: 220px; }
+  }
+`;
 
 export default Login;
