@@ -28,13 +28,31 @@ const PlaceCard = ({
     return ((p[0]?.[0] || "M") + (p[1]?.[0] || "N")).toUpperCase();
   }, [title]);
 
+  const canOpen = typeof onOpen === "function";
+
+  const open = () => {
+    if (canOpen) onOpen();
+  };
+
+  const onKeyDown = (e) => {
+    if (!canOpen) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      open();
+    }
+  };
+
   return (
     <div
-      onClick={onOpen}
+      className="mn_place_card_grid"   // ✅ already added
+      role={canOpen ? "button" : "group"}
+      tabIndex={canOpen ? 0 : -1}
+      onClick={open}
+      onKeyDown={onKeyDown}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        cursor: "pointer",
+        cursor: canOpen ? "pointer" : "default",
         display: "grid",
         gridTemplateColumns: "140px 1fr auto",
         gap: 14,
@@ -49,6 +67,7 @@ const PlaceCard = ({
         transform: hover ? "translateY(-2px)" : "none",
         transition: "all 160ms ease",
         marginBottom: 12,
+        outline: "none",
       }}
     >
       {/* IMAGE */}
@@ -66,7 +85,7 @@ const PlaceCard = ({
         {imageUrl && !imgError ? (
           <img
             src={imageUrl}
-            alt={title}
+            alt={title || "Place image"}
             loading="lazy"
             onError={() => setImgError(true)}
             style={{
@@ -93,7 +112,7 @@ const PlaceCard = ({
           </div>
         )}
 
-        {badgeText ? (
+        {badgeText && (
           <div
             style={{
               position: "absolute",
@@ -106,11 +125,13 @@ const PlaceCard = ({
               color: "#fff",
               border: "1px solid rgba(255,255,255,0.4)",
               backdropFilter: "blur(6px)",
+              maxWidth: 120,
+              ...clamp(1),
             }}
           >
             {badgeText}
           </div>
-        ) : null}
+        )}
       </div>
 
       {/* CONTENT */}
@@ -123,12 +144,11 @@ const PlaceCard = ({
             fontWeight: 800,
             ...clamp(2),
           }}
-          title={title}
         >
           {title}
         </h4>
 
-        {subtitle1 ? (
+        {subtitle1 && (
           <p
             style={{
               margin: "8px 0 0",
@@ -136,13 +156,12 @@ const PlaceCard = ({
               color: "#444",
               ...clamp(2),
             }}
-            title={subtitle1}
           >
             {subtitle1}
           </p>
-        ) : null}
+        )}
 
-        {subtitle2 ? (
+        {subtitle2 && (
           <p
             style={{
               margin: "6px 0 0",
@@ -151,11 +170,10 @@ const PlaceCard = ({
               whiteSpace: "pre-line",
               ...clamp(3),
             }}
-            title={subtitle2}
           >
             {subtitle2}
           </p>
-        ) : null}
+        )}
       </div>
 
       {/* ACTION */}
@@ -178,11 +196,7 @@ const PlaceCard = ({
               color: "#fff",
               fontSize: 12,
               fontWeight: 700,
-              border: "1px solid #e9e9e9",
-              maxWidth: 140,
-              ...clamp(1),
             }}
-            title={rightTop}
           >
             {rightTop}
           </div>
@@ -190,7 +204,7 @@ const PlaceCard = ({
           <div style={{ height: 28 }} />
         )}
 
-        {buttonText ? (
+        {buttonText && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -200,7 +214,8 @@ const PlaceCard = ({
               padding: "9px 12px",
               borderRadius: 12,
               border: hover ? "1px solid #cfcfcf" : "1px solid #ddd",
-              background: "#fff",
+              background: hover ? "#111" : "#fff",
+              color: hover ? "#fff" : "#111",
               cursor: "pointer",
               fontSize: 13,
               fontWeight: 700,
@@ -209,8 +224,17 @@ const PlaceCard = ({
           >
             {buttonText}
           </button>
-        ) : null}
+        )}
       </div>
+
+      {/* MOBILE RESPONSIVE */}
+      <style>{`
+        @media (max-width: 640px) {
+          .mn_place_card_grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };
