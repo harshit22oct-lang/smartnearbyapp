@@ -3,7 +3,8 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import PlaceCard from "../components/PlaceCard";
 
-const API = "http://localhost:5000";
+const API = process.env.REACT_APP_API_URL;
+
 
 // ✅ Dashboard state persistence (so Back doesn't clear search)
 const DASH_KEY = "mn_dashboard_state_v1";
