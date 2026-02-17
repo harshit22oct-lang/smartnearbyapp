@@ -61,9 +61,13 @@ const PlaceDetails = () => {
     [token]
   );
 
-  const googleImg = (ref) => {
+  // ✅ Google photo URL via your backend proxy
+  // Added maxWidth so Google returns a real image (many proxies need a size param)
+  const googleImg = (ref, maxWidth = 1400) => {
     if (!ref || !API) return "";
-    return `${API}/api/google/photo?photoRef=${encodeURIComponent(ref)}`;
+    return `${API}/api/google/photo?photoRef=${encodeURIComponent(
+      ref
+    )}&maxWidth=${encodeURIComponent(maxWidth)}`;
   };
 
   const absUpload = (u) => {
@@ -86,7 +90,11 @@ const PlaceDetails = () => {
           `${API}/api/google/details?placeId=${encodeURIComponent(id)}`,
           authHeader
         );
-        setData({ ...res.data, source: "google" });
+
+        // ✅ Some backends return { result: {...} } or { place: {...} }
+        const payload = res.data?.result || res.data?.place || res.data;
+
+        setData({ ...payload, source: "google" });
       } else {
         const res = await axios.get(`${API}/api/search/${id}`, authHeader);
         setData({ ...res.data, source: "mongo" });
@@ -118,16 +126,53 @@ const PlaceDetails = () => {
     // eslint-disable-next-line
   }, [source, id]);
 
+  // ✅ Normalize Google photos from many possible response shapes
   const photos = useMemo(() => {
     if (!data) return [];
 
+    // ---------- GOOGLE ----------
     if (data.source === "google") {
-      const list = Array.isArray(data.photos) ? data.photos : [];
-      return list
-        .map((x) => (x?.photoRef ? googleImg(x.photoRef) : ""))
+      // photos can be in: data.photos OR data.result.photos OR data.place.photos
+      const list =
+        (Array.isArray(data.photos) && data.photos) ||
+        (Array.isArray(data?.result?.photos) && data.result.photos) ||
+        (Array.isArray(data?.place?.photos) && data.place.photos) ||
+        [];
+
+      const normalized = list
+        .map((p) => {
+          // if backend already gives direct URLs
+          if (typeof p === "string") return p;
+
+          // common google keys
+          const ref =
+            p?.photoRef ||
+            p?.photo_reference ||
+            p?.reference ||
+            p?.name || // sometimes new APIs use "name"
+            p?.photoReference;
+
+          // sometimes backend returns { url: "https://..." }
+          if (p?.url && typeof p.url === "string") return p.url;
+
+          // our proxy needs a ref
+          if (ref) return googleImg(ref);
+
+          return "";
+        })
         .filter(Boolean);
+
+      // single fallback if backend provided one ref/url
+      if (normalized.length === 0) {
+        if (data?.photoRef) return [googleImg(data.photoRef)];
+        if (data?.photo_reference) return [googleImg(data.photo_reference)];
+        if (data?.imageUrl) return [data.imageUrl];
+      }
+
+      return normalized;
     }
 
+    // ---------- MONGO / CURATED ----------
     const imgs = Array.isArray(data.images) ? data.images : [];
     const merged = imgs.map(absUpload).filter(Boolean);
 
@@ -139,12 +184,11 @@ const PlaceDetails = () => {
   }, [data]);
 
   const heroImage = useMemo(() => {
-  if (photos.length) return photos[0];
+    if (photos.length) return photos[0];
 
-  // ✅ fallback image if no photos returned
-  return "https://images.unsplash.com/photo-1521017432531-fbd92d768814?auto=format&fit=crop&w=1200&q=60";
-}, [photos]);
-
+    // ✅ fallback image if no photos returned
+    return "https://images.unsplash.com/photo-1521017432531-fbd92d768814?auto=format&fit=crop&w=1200&q=60";
+  }, [photos]);
 
   const openViewer = (idx) => {
     if (!photos.length) return;
@@ -186,7 +230,12 @@ const PlaceDetails = () => {
 
     if (href) {
       return (
-        <a href={href} target="_blank" rel="noreferrer" style={{ ...base, ...styles }}>
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          style={{ ...base, ...styles }}
+        >
           {label}
         </a>
       );
@@ -239,12 +288,21 @@ const PlaceDetails = () => {
         <div className="_pdHeroTextWrap">
           <div style={{ maxWidth: 1100, margin: "0 auto" }}>
             {loading ? (
-              <div style={{ color: "#fff", opacity: 0.9, fontWeight: 800 }}>Loading...</div>
+              <div style={{ color: "#fff", opacity: 0.9, fontWeight: 800 }}>
+                Loading...
+              </div>
             ) : msg ? (
               <div className="_pdErrorBox">{msg}</div>
             ) : data ? (
               <>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
                   <h1 className="_pdTitle" title={data.name}>
                     {data.name}
                   </h1>
@@ -253,8 +311,16 @@ const PlaceDetails = () => {
                     <span
                       style={
                         data.openNow
-                          ? pillStyle("rgba(20,190,90,0.20)", "#d8ffe6", "1px solid rgba(255,255,255,0.22)")
-                          : pillStyle("rgba(255,80,80,0.20)", "#ffe2e2", "1px solid rgba(255,255,255,0.22)")
+                          ? pillStyle(
+                              "rgba(20,190,90,0.20)",
+                              "#d8ffe6",
+                              "1px solid rgba(255,255,255,0.22)"
+                            )
+                          : pillStyle(
+                              "rgba(255,80,80,0.20)",
+                              "#ffe2e2",
+                              "1px solid rgba(255,255,255,0.22)"
+                            )
                       }
                     >
                       {data.openNow ? "🟢 Open now" : "🔴 Closed"}
@@ -262,13 +328,26 @@ const PlaceDetails = () => {
                   ) : null}
 
                   {data.rating ? (
-                    <span style={pillStyle("rgba(0,0,0,0.40)", "#fff", "1px solid rgba(255,255,255,0.22)")}>
-                      ⭐ {data.rating} {data.totalRatings ? `(${data.totalRatings})` : ""}
+                    <span
+                      style={pillStyle(
+                        "rgba(0,0,0,0.40)",
+                        "#fff",
+                        "1px solid rgba(255,255,255,0.22)"
+                      )}
+                    >
+                      ⭐ {data.rating}{" "}
+                      {data.totalRatings ? `(${data.totalRatings})` : ""}
                     </span>
                   ) : null}
 
                   {data?.vibe ? (
-                    <span style={pillStyle("rgba(0,0,0,0.40)", "#fff", "1px solid rgba(255,255,255,0.22)")}>
+                    <span
+                      style={pillStyle(
+                        "rgba(0,0,0,0.40)",
+                        "#fff",
+                        "1px solid rgba(255,255,255,0.22)"
+                      )}
+                    >
                       {(data.emoji || "✨") + " " + data.vibe}
                     </span>
                   ) : null}
@@ -276,7 +355,9 @@ const PlaceDetails = () => {
 
                 <div className="_pdMetaRow">
                   {data.address || data.location ? (
-                    <div className="_pdAddress">📍 {data.address || data.location}</div>
+                    <div className="_pdAddress">
+                      📍 {data.address || data.location}
+                    </div>
                   ) : null}
 
                   {photos.length ? (
@@ -318,9 +399,13 @@ const PlaceDetails = () => {
                 />
               </div>
 
-              {(data?.why || data?.highlight) ? (
+              {data?.why || data?.highlight ? (
                 <div className="_pdWhyBox">
-                  {data?.why ? <div style={{ marginBottom: data?.highlight ? 8 : 0 }}>💡 {data.why}</div> : null}
+                  {data?.why ? (
+                    <div style={{ marginBottom: data?.highlight ? 8 : 0 }}>
+                      💡 {data.why}
+                    </div>
+                  ) : null}
                   {data?.highlight ? <div>🔥 {data.highlight}</div> : null}
                 </div>
               ) : null}
@@ -340,23 +425,43 @@ const PlaceDetails = () => {
               {photos.length ? (
                 <div className="_pdGallery">
                   {photos.slice(0, 9).map((src, idx) => (
-                    <div key={`${src}-${idx}`} className="_pdThumb" onClick={() => openViewer(idx)}>
-                      <img src={src} alt="place" loading="lazy" className="_pdThumbImg" />
+                    <div
+                      key={`${src}-${idx}`}
+                      className="_pdThumb"
+                      onClick={() => openViewer(idx)}
+                    >
+                      <img
+                        src={src}
+                        alt="place"
+                        loading="lazy"
+                        className="_pdThumbImg"
+                        onError={(e) => {
+                          // if any image fails, hide it (prevents broken hero-like look in gallery)
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
                       {idx === 8 && photos.length > 9 ? (
-                        <div className="_pdMoreOverlay">+{photos.length - 9} more</div>
+                        <div className="_pdMoreOverlay">
+                          +{photos.length - 9} more
+                        </div>
                       ) : null}
                     </div>
                   ))}
                 </div>
               ) : (
-                <p style={{ marginTop: 10, opacity: 0.7 }}>No photos available.</p>
+                <p style={{ marginTop: 10, opacity: 0.7 }}>
+                  No photos available.
+                </p>
               )}
             </div>
 
             {/* HOURS */}
             {Array.isArray(data?.weekdayText) && data.weekdayText.length ? (
               <div style={{ ...cardStyle, padding: 14 }}>
-                <button className="_pdAccordionBtn" onClick={() => setHoursOpen((p) => !p)}>
+                <button
+                  className="_pdAccordionBtn"
+                  onClick={() => setHoursOpen((p) => !p)}
+                >
                   <span>Opening Hours</span>
                   <span style={{ opacity: 0.7 }}>{hoursOpen ? "▲" : "▼"}</span>
                 </button>
@@ -412,11 +517,20 @@ const PlaceDetails = () => {
               📸 Photos
             </button>
           ) : (
-            <button className="_pdStickyBtnDark" disabled style={{ opacity: 0.6 }}>
+            <button
+              className="_pdStickyBtnDark"
+              disabled
+              style={{ opacity: 0.6 }}
+            >
               📸 Photos
             </button>
           )}
-          <a className="_pdStickyBtnDark" href={mapsUrl || "#"} target="_blank" rel="noreferrer">
+          <a
+            className="_pdStickyBtnDark"
+            href={mapsUrl || "#"}
+            target="_blank"
+            rel="noreferrer"
+          >
             🗺️ Maps
           </a>
         </div>
@@ -430,7 +544,10 @@ const PlaceDetails = () => {
               <div style={{ fontWeight: 1000, fontSize: 13 }}>
                 Photo {activeIdx + 1} / {photos.length}
               </div>
-              <button className="_pdModalClose" onClick={() => setViewerOpen(false)}>
+              <button
+                className="_pdModalClose"
+                onClick={() => setViewerOpen(false)}
+              >
                 ✕
               </button>
             </div>
@@ -448,7 +565,6 @@ const PlaceDetails = () => {
         </div>
       ) : null}
 
-      {/* CSS (responsive) */}
       <style>{css}</style>
     </div>
   );
@@ -484,7 +600,6 @@ const css = `
     margin:0; color:#fff;
     font-size:28px; line-height:34px;
     font-weight:1000;
-    ${""}
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
   }
   ._pdMetaRow{
@@ -620,7 +735,6 @@ const css = `
     color:#fff; cursor:pointer; font-weight:1000;
   }
 
-  /* ✅ MOBILE IMPROVEMENTS */
   @media (max-width: 980px){
     ._pdGrid{ grid-template-columns: 1fr; }
     ._pdGallery{ grid-template-columns: repeat(2, 1fr); }
