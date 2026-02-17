@@ -4,8 +4,8 @@ import { useNavigate, useParams } from "react-router-dom";
 
 const API = process.env.REACT_APP_API_URL;
 
-const FALLBACK_HERO =
-  "https://images.unsplash.com/photo-1521017432531-fbd92d768814?auto=format&fit=crop&w=1400&q=70";
+// ✅ Fallback is now gradient (no Unsplash)
+const FALLBACK_HERO = null;
 
 const clamp = (lines) => ({
   display: "-webkit-box",
@@ -48,6 +48,7 @@ const PlaceDetails = () => {
   const [activeIdx, setActiveIdx] = useState(0);
   const [hoursOpen, setHoursOpen] = useState(false);
 
+  // ✅ heroSrc null => show gradient background
   const [heroSrc, setHeroSrc] = useState(FALLBACK_HERO);
 
   useEffect(() => {
@@ -66,7 +67,6 @@ const PlaceDetails = () => {
     [token]
   );
 
-  // Your backend proxy should NOT require auth for images, otherwise they won't load
   const googleImg = (ref, maxWidth = 1400) => {
     if (!ref || !API) return "";
     return `${API}/api/google/photo?photoRef=${encodeURIComponent(
@@ -94,8 +94,6 @@ const PlaceDetails = () => {
           `${API}/api/google/details?placeId=${encodeURIComponent(id)}`,
           authHeader
         );
-
-        // Support common wrappers: {result}, {place}, or direct
         const payload = res.data?.result || res.data?.place || res.data;
         setData({ ...payload, source: "google" });
       } else {
@@ -129,17 +127,13 @@ const PlaceDetails = () => {
     // eslint-disable-next-line
   }, [source, id]);
 
-  // ✅ Super-robust photo extraction (works even if backend returns photoUrl like dashboard)
   const photos = useMemo(() => {
     if (!data) return [];
 
-    // GOOGLE
     if (data.source === "google") {
-      // Sometimes backend directly returns a ready URL used on dashboard
       const directHero =
         data.photoUrl || data.heroImage || data.imageUrl || data.coverUrl;
 
-      // Photos list may be in different places
       const list =
         (Array.isArray(data.photos) && data.photos) ||
         (Array.isArray(data?.result?.photos) && data.result.photos) ||
@@ -149,42 +143,30 @@ const PlaceDetails = () => {
       const normalized = list
         .map((p) => {
           if (!p) return "";
-
-          // If it's already a string URL
           if (typeof p === "string") return p;
-
-          // backend might give { url: "..." }
           if (p.url && typeof p.url === "string") return p.url;
 
-          // common reference keys
           const ref =
             p.photoRef ||
             p.photo_reference ||
             p.reference ||
-            p.name || // new Places API often uses name like "places/.../photos/..."
+            p.name ||
             p.photoReference;
 
           return ref ? googleImg(ref) : "";
         })
         .filter(Boolean);
 
-      // Add directHero first if exists
-      const all = [
-        ...(directHero ? [directHero] : []),
-        ...normalized,
-      ].filter(Boolean);
+      const all = [...(directHero ? [directHero] : []), ...normalized].filter(Boolean);
 
-      // Last-resort single ref keys
       if (all.length === 0) {
         if (data.photoRef) return [googleImg(data.photoRef)];
         if (data.photo_reference) return [googleImg(data.photo_reference)];
       }
 
-      // Remove duplicates
       return Array.from(new Set(all));
     }
 
-    // MONGO / CURATED
     const imgs = Array.isArray(data.images) ? data.images : [];
     const merged = imgs.map(absUpload).filter(Boolean);
 
@@ -196,10 +178,9 @@ const PlaceDetails = () => {
     return Array.from(new Set(merged));
   }, [data]);
 
-  // ✅ Hero src now truly follows photos + has onError fallback
   useEffect(() => {
     if (photos.length) setHeroSrc(photos[0]);
-    else setHeroSrc(FALLBACK_HERO);
+    else setHeroSrc(null); // ✅ gradient fallback
   }, [photos]);
 
   const openViewer = (idx) => {
@@ -262,13 +243,18 @@ const PlaceDetails = () => {
       {/* HERO */}
       <div style={{ position: "relative", overflow: "hidden" }}>
         <div style={{ height: "clamp(220px, 40vh, 520px)", position: "relative" }}>
-          {/* ✅ real img so we can onError fallback */}
-          <img
-            src={heroSrc}
-            alt="hero"
-            className="_pdHeroImg"
-            onError={() => setHeroSrc(FALLBACK_HERO)}
-          />
+          {/* ✅ if no image => gradient */}
+          {heroSrc ? (
+            <img
+              src={heroSrc}
+              alt="hero"
+              className="_pdHeroImg"
+              onError={() => setHeroSrc(null)}
+            />
+          ) : (
+            <div className="_pdHeroGradient" />
+          )}
+
           <div className="_pdHeroOverlay" />
         </div>
 
@@ -493,6 +479,11 @@ const css = `
     object-fit:cover;
     display:block;
     background:#111;
+  }
+  /* ✅ Gradient fallback hero (no Unsplash) */
+  ._pdHeroGradient{
+    position:absolute; inset:0;
+    background: linear-gradient(135deg, #0f172a 0%, #111827 45%, #0b0b0b 100%);
   }
   ._pdHeroOverlay{
     position:absolute; inset:0;
