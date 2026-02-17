@@ -1,9 +1,10 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Business = require("../models/Business");
 const protect = require("../middleware/authMiddleware");
 
-// small helper (same behavior everywhere)
+// helper
 const normCity = (s) => String(s || "").trim().toLowerCase();
 
 //
@@ -12,24 +13,20 @@ const normCity = (s) => String(s || "").trim().toLowerCase();
 //
 router.get("/", protect, async (req, res) => {
   const city = normCity(req.query.city);
-  const query = String(req.query.q || "").trim();
+  const q = String(req.query.q || "").trim();
 
-  // ✅ city required so curated results never mix across cities
   if (!city) return res.status(400).json({ message: "city is required" });
 
   try {
     const filter = { city };
 
-    // Optional keyword filter
-    if (query) {
-      const re = new RegExp(query, "i");
+    if (q) {
+      const re = new RegExp(q, "i");
       filter.$or = [
         { name: { $regex: re } },
         { category: { $regex: re } },
         { location: { $regex: re } },
         { address: { $regex: re } },
-
-        // curated fields searchable too
         { vibe: { $regex: re } },
         { why: { $regex: re } },
         { highlight: { $regex: re } },
@@ -41,7 +38,7 @@ router.get("/", protect, async (req, res) => {
     const results = await Business.find(filter).sort({ createdAt: -1 });
     res.json(results);
   } catch (err) {
-    console.error("Search error:", err);
+    console.error("❌ Search error:", err.message);
     res.status(500).json({ message: "Server error (search)" });
   }
 });
@@ -52,11 +49,19 @@ router.get("/", protect, async (req, res) => {
 //
 router.get("/:id", protect, async (req, res) => {
   try {
-    const business = await Business.findById(req.params.id);
+    const id = String(req.params.id || "").trim();
+
+    // ✅ clean error instead of throwing CastError
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid business id" });
+    }
+
+    const business = await Business.findById(id);
     if (!business) return res.status(404).json({ message: "Business not found" });
+
     res.json(business);
   } catch (err) {
-    console.error("Get by ID error:", err);
+    console.error("❌ Get by ID error:", err.message);
     res.status(500).json({ message: "Server error (get by id)" });
   }
 });
@@ -72,24 +77,17 @@ router.post("/", protect, async (req, res) => {
     }
 
     const {
-      // ✅ REQUIRED
       city,
-
-      // base
       name,
       category = "",
       location = "",
       address = "",
       rating = null,
 
-      // old single-image support (still allowed)
       imageUrl = "",
       photoRef = "",
-
-      // ✅ NEW: multiple images (uploaded or URLs)
       images = [],
 
-      // curated “taste”
       emoji = "✨",
       vibe = "",
       priceLevel = "",
@@ -104,7 +102,9 @@ router.post("/", protect, async (req, res) => {
     const cleanCity = normCity(city);
     if (!cleanCity) return res.status(400).json({ message: "City is required" });
 
-    if (!name || !name.trim()) return res.status(400).json({ message: "Name required" });
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ message: "Name required" });
+    }
 
     const cleanTags = Array.isArray(tags)
       ? tags.map((t) => String(t).trim()).filter(Boolean)
@@ -121,7 +121,7 @@ router.post("/", protect, async (req, res) => {
     const business = await Business.create({
       city: cleanCity,
 
-      name: name.trim(),
+      name: String(name).trim(),
       category: String(category || "").trim(),
       location: String(location || "").trim(),
       address: String(address || "").trim(),
@@ -129,8 +129,6 @@ router.post("/", protect, async (req, res) => {
 
       imageUrl: String(imageUrl || "").trim(),
       photoRef: String(photoRef || "").trim(),
-
-      // ✅ store gallery
       images: cleanImages,
 
       emoji: String(emoji || "✨").trim(),
@@ -149,7 +147,7 @@ router.post("/", protect, async (req, res) => {
 
     res.status(201).json(business);
   } catch (err) {
-    console.error("Add business error:", err);
+    console.error("❌ Add business error:", err.message);
     res.status(500).json({ message: "Server error (add business)" });
   }
 });
@@ -164,13 +162,18 @@ router.delete("/:id", protect, async (req, res) => {
       return res.status(403).json({ message: "Admin only: cannot delete" });
     }
 
-    const business = await Business.findById(req.params.id);
+    const id = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid business id" });
+    }
+
+    const business = await Business.findById(id);
     if (!business) return res.status(404).json({ message: "Business not found" });
 
-    await Business.findByIdAndDelete(req.params.id);
+    await Business.findByIdAndDelete(id);
     res.json({ message: "✅ Curated place deleted" });
   } catch (err) {
-    console.error("Delete business error:", err);
+    console.error("❌ Delete business error:", err.message);
     res.status(500).json({ message: "Server error (delete)" });
   }
 });
