@@ -15,6 +15,9 @@ const Login = () => {
 
   const [msg, setMsg] = useState("");
 
+  // ✅ LIVE API from Vercel env (CRA)
+  const API = process.env.REACT_APP_API_URL;
+
   const founders = useMemo(
     () => [
       {
@@ -53,13 +56,25 @@ const Login = () => {
     e.preventDefault();
     setMsg("");
 
+    // ✅ If env var missing (common on Vercel if not set to Production or not redeployed)
+    if (!API) {
+      setMsg(
+        "API URL missing. Add REACT_APP_API_URL in Vercel (Production) and redeploy."
+      );
+      return;
+    }
+
     try {
+      const cleanName = name.trim();
+      const cleanEmail = email.trim();
+
       if (isRegister) {
-        const res = await axios.post("http://localhost:5000/api/auth/register", {
-          name,
-          email,
+        const res = await axios.post(`${API}/api/auth/register`, {
+          name: cleanName,
+          email: cleanEmail,
           password,
         });
+
         setMsg(res.data?.message || "✅ Registered! Now login.");
         setIsRegister(false);
         setName("");
@@ -67,8 +82,8 @@ const Login = () => {
         return;
       }
 
-      const res = await axios.post("http://localhost:5000/api/auth/login", {
-        email,
+      const res = await axios.post(`${API}/api/auth/login`, {
+        email: cleanEmail,
         password,
       });
 
@@ -81,7 +96,7 @@ const Login = () => {
       localStorage.setItem("token", token);
       window.location.href = "/dashboard";
     } catch (err) {
-      setMsg(err?.response?.data?.message || "Something went wrong");
+      setMsg(err?.response?.data?.message || err?.message || "Something went wrong");
     }
   };
 
@@ -107,13 +122,18 @@ const Login = () => {
             </p>
 
             <div style={chipRow}>
-              {["Romantic 👀💕", "Cozy ☕︎🍂˖", "Study 📜", "Nature ⛰️🍃˚", "Budget 💸", "Night ✨🌙"].map(
-                (t) => (
-                  <span key={t} style={chip}>
-                    {t}
-                  </span>
-                )
-              )}
+              {[
+                "Romantic 👀💕",
+                "Cozy ☕︎🍂˖",
+                "Study 📜",
+                "Nature ⛰️🍃˚",
+                "Budget 💸",
+                "Night ✨🌙",
+              ].map((t) => (
+                <span key={t} style={chip}>
+                  {t}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -131,7 +151,9 @@ const Login = () => {
             </div>
 
             <p style={{ marginTop: 6, opacity: 0.75 }}>
-              {isRegister ? "Register and start exploring." : "Sign in to start exploring ᨒ𓂃☕︎‧˚"}
+              {isRegister
+                ? "Register and start exploring."
+                : "Sign in to start exploring ᨒ𓂃☕︎‧˚"}
             </p>
 
             {msg ? <div style={msgBox}>{msg}</div> : null}
@@ -177,6 +199,9 @@ const Login = () => {
               </button>
 
               <div style={tinyNote}>GoogleAuth Soon.</div>
+
+              {/* Optional debug (remove later) */}
+              {/* <div style={{ marginTop: 8, fontSize: 12, opacity: 0.6 }}>API: {API || "NOT SET"}</div> */}
             </form>
           </div>
         </div>
@@ -217,9 +242,7 @@ const Login = () => {
         <section style={{ marginTop: 18, marginBottom: 30 }}>
           <div style={sectionCard}>
             <h2 style={{ marginTop: 0 }}>Founders</h2>
-            <p style={{ marginTop: 6, opacity: 0.8 }}>
-              Team behind MoodNest .
-            </p>
+            <p style={{ marginTop: 6, opacity: 0.8 }}>Team behind MoodNest .</p>
 
             <div style={foundersGrid}>
               {founders.map((f) => (
@@ -228,8 +251,7 @@ const Login = () => {
             </div>
 
             <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
-              <b>
-              © 2026 MoodNest LLC All rights reserved</b>.
+              <b>© 2026 MoodNest LLC All rights reserved</b>.
             </div>
           </div>
         </section>
@@ -452,11 +474,9 @@ const founderCard = {
   boxShadow: "0 10px 22px rgba(0,0,0,0.08)",
   textAlign: "center",
   transition: "all 0.25s ease",
-  fontFamily: "'Outfit', sans-serif"
-
+  fontFamily: "'Outfit', sans-serif",
 };
 
-/* ✅ NEW: Modern rectangular photo */
 const photoWrapper = {
   width: "100%",
   height: 260,
