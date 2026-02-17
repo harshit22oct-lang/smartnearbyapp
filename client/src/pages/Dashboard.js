@@ -852,12 +852,7 @@ const Dashboard = () => {
                       subtitle2={extraLine || (b.category ? `Category: ${b.category}` : "")}
                       rightTop={ratingText || (isFav(b._id) ? "Saved" : "Curated")}
                       buttonText={user?.isAdmin ? "🗑 Delete" : isFav(b._id) ? "Remove" : "Save"}
-                      onOpen={() =>
-                        openDetails(`/place/mongo/${b._id}`, {
-                          heroUrl: mongoImg(b),
-                          heroName: b.name,
-                        })
-                      }// ✅ keeps state
+                      onOpen={() => openDetails(`/place/mongo/${b._id}`)} // ✅ keeps state
                       onAction={(e) => {
                         e?.stopPropagation?.();
                         if (user?.isAdmin) deleteCurated(b._id);
@@ -899,12 +894,7 @@ const Dashboard = () => {
                       subtitle2=""
                       rightTop={saved ? "✅ Saved" : ratingText}
                       buttonText={saved ? "Unsave" : "⭐ Save"}
-                      onOpen={() =>
-                        openDetails(`/place/google/${p.placeId}`, {
-                          heroPhotoRef: p.photoRef,
-                          heroName: p.name,
-                        })
-                      } // ✅ keeps state
+                      onOpen={() => openDetails(`/place/google/${p.placeId}`)} // ✅ keeps state
                       onAction={(e) => {
                         e?.stopPropagation?.();
                         toggleGoogleSave(p);
@@ -934,12 +924,7 @@ const Dashboard = () => {
                 subtitle2={b.why ? `💡 ${b.why}` : b.category ? `Category: ${b.category}` : ""}
                 rightTop={b.rating ? `⭐ ${b.rating}` : "Saved"}
                 buttonText={"Remove"}
-                      onOpen={() =>
-                        openDetails(`/place/mongo/${b._id}`, {
-                          heroUrl: mongoImg(b),
-                          heroName: b.name,
-                        })
-                      }// ✅ keeps state// ✅ keeps state
+                onOpen={() => openDetails(`/place/mongo/${b._id}`)} // ✅ keeps state
                 onAction={(e) => {
                   e?.stopPropagation?.();
                   toggleFavorite(b._id);
