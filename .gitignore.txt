@@ -7,3 +7,5 @@ server/uploads
 **/.env
 build
 dist
+server/.env
+.env
