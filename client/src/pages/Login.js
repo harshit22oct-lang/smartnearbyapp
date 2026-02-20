@@ -7,12 +7,12 @@ import f3 from "../assets/f3.jpg";
 import f4 from "../assets/f4.jpg";
 import f5 from "../assets/f5.jpg";
 
-const API = process.env.REACT_APP_API_URL; // ✅ LIVE API (Vercel env)
+const API = process.env.REACT_APP_API_URL;
 
 const Login = () => {
   const [isRegister, setIsRegister] = useState(false);
 
-  const [name, setName] = useState(""); // register only
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -109,112 +109,116 @@ const Login = () => {
   };
 
   return (
-    <div style={pageWrap} className="mn_login_page">
-      <div style={container} className="mn_login_container">
-        {/* TOP: HERO + LOGIN */}
-        <div style={topGrid} className="mn_topGrid">
-          {/* Left: Branding */}
-          <div>
-            <div style={pill}>✨ MoodNest • Smart Place Recommender</div>
+    <div style={page} className="mn_login_page">
+      {/* HERO (background only here) */}
+      <section style={heroSection} className="mn_heroSection">
+        <div style={heroOverlay} />
+        <div style={heroInner} className="mn_heroInner">
+          <div style={heroGrid} className="mn_topGrid">
+            {/* Left */}
+            <div style={heroLeft} className="mn_heroLeft">
+              <div style={heroPill}>✨ MoodNest • Smart Place Recommender</div>
 
-            <h1 style={heroTitle} className="mn_heroTitle">
-              Your mood decides the{" "}
-              <span style={{ textDecoration: "underline" }}>destination</span>.
-            </h1>
+              <h1 style={heroTitle} className="mn_heroTitle">
+                Your mood decides the{" "}
+                <span style={{ textDecoration: "underline", textUnderlineOffset: 6 }}>
+                  destination
+                </span>
+                .
+              </h1>
 
-            <p style={heroDesc} className="mn_heroDesc">
-              MoodNest helps you discover nearby places using a mix of{" "}
-              <b>curated recommendations</b> and <b>Google live results</b>. Search
-              cafes, gyms, restaurants, parks — or tap mood buttons for quick
-              picks.
-            </p>
+              <p style={heroDesc} className="mn_heroDesc">
+                MoodNest helps you discover nearby places using a mix of{" "}
+                <b>curated recommendations</b> and <b>Google live results</b>. Search
+                cafes, gyms, restaurants, parks — or tap mood buttons for quick picks.
+              </p>
 
-            <div style={chipRow} className="mn_chipRow">
-              {["Romantic 👀💕", "Cozy ☕︎🍂˖", "Study 📜", "Nature ⛰️🍃˚", "Budget 💸", "Night ✨🌙"].map(
-                (t) => (
-                  <span key={t} style={chip}>
-                    {t}
-                  </span>
-                )
-              )}
-            </div>
-          </div>
+              <div style={chipRow} className="mn_chipRow">
+                {["Romantic 👀💕", "Cozy ☕︎🍂˖", "Study 📜", "Nature ⛰️🍃˚", "Budget 💸", "Night ✨🌙"].map(
+                  (t) => (
+                    <span key={t} style={chip}>
+                      {t}
+                    </span>
+                  )
+                )}
+              </div>
 
-          {/* Right: Login Card */}
-          <div style={loginCard} className="mn_loginCard">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-              }}
-            >
-              <h2 style={{ margin: 0 }}>{isRegister ? "Create Account" : "Login"}</h2>
-              <span style={tinyHint}>{isRegister ? "New here" : "Welcome back"}</span>
+              <div style={heroMiniNote}>Made for quick place discovery • MERN + Google Places</div>
             </div>
 
-            <p style={{ marginTop: 6, opacity: 0.75 }}>
-              {isRegister ? "Register and start exploring." : "Sign in to start exploring ᨒ𓂃☕︎‧˚"}
-            </p>
+            {/* Right (glass card) */}
+            <div style={loginCard} className="mn_loginCard">
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                <h2 style={{ margin: 0, fontSize: 26 }}>{isRegister ? "Create Account" : "Login"}</h2>
+                <span style={tinyHint}>{isRegister ? "New here" : "Welcome back"}</span>
+              </div>
 
-            {msg ? <div style={msgBox}>{msg}</div> : null}
+              <p style={{ marginTop: 8, opacity: 0.72, fontSize: 14.5 }}>
+                {isRegister ? "Register and start exploring." : "Sign in to start exploring ᨒ𓂃☕︎‧˚"}
+              </p>
 
-            <form onSubmit={submit} style={{ marginTop: 12 }}>
-              {isRegister ? (
+              {msg ? <div style={msgBox}>{msg}</div> : null}
+
+              <form onSubmit={submit} style={{ marginTop: 14 }}>
+                {isRegister ? (
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Full name"
+                    style={inputStyle}
+                  />
+                ) : null}
+
                 <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Full name"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
                   style={inputStyle}
                 />
-              ) : null}
 
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email"
-                style={inputStyle}
-              />
+                <input
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  type="password"
+                  style={inputStyle}
+                />
 
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                type="password"
-                style={inputStyle}
-              />
+                <button type="submit" style={primaryBtn} disabled={busy}>
+                  {busy ? "Please wait..." : isRegister ? "Register" : "Login"}
+                </button>
 
-              <button type="submit" style={primaryBtn} disabled={busy}>
-                {busy ? "Please wait..." : isRegister ? "Register" : "Login"}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMsg("");
+                    setIsRegister((p) => !p);
+                  }}
+                  style={secondaryBtn}
+                  disabled={busy}
+                >
+                  {isRegister ? "Already have account? Login" : "New user? Create account"}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setMsg("");
-                  setIsRegister((p) => !p);
-                }}
-                style={secondaryBtn}
-                disabled={busy}
-              >
-                {isRegister ? "Already have account? Login" : "New user? Create account"}
-              </button>
-
-              <div style={tinyNote}>GoogleAuth Soon.</div>
-            </form>
+                <div style={tinyNote}>GoogleAuth Soon.</div>
+              </form>
+            </div>
           </div>
         </div>
+      </section>
 
-        {/* ABOUT SECTION (RESTORED) */}
-        <section style={{ marginTop: 30 }}>
+      {/* CLEAN CONTENT AREA (no bg image) */}
+      <main style={contentWrap} className="mn_contentWrap">
+        {/* ABOUT */}
+        <section style={{ marginTop: 28 }}>
           <div style={sectionCard}>
-            <h2 style={{ marginTop: 0 }}>About MoodNest </h2>
+            <h2 style={{ marginTop: 0 }}>About MoodNest</h2>
 
-            <p style={{ marginTop: 6, opacity: 0.85, lineHeight: 1.6 }}>
-              MoodNest is a MERN-based web app 🌐that helps users discover places near them.
+            <p style={{ marginTop: 8, opacity: 0.86, lineHeight: 1.65 }}>
+              MoodNest is a MERN-based web app 🌐 that helps users discover places near them.
               It combines <b>curated recommendations</b> (handpicked by admin) with{" "}
-              <b>live Google results</b>. Users can search, explore place details,
-              and save favorites for later.
+              <b>live Google results</b>. Users can search, explore place details, and save
+              favorites for later.
             </p>
 
             <div style={miniGrid} className="mn_miniGrid">
@@ -237,11 +241,11 @@ const Login = () => {
           </div>
         </section>
 
-        {/* FOUNDERS SECTION */}
-        <section style={{ marginTop: 18, marginBottom: 30 }}>
+        {/* FOUNDERS */}
+        <section style={{ marginTop: 18, marginBottom: 34 }}>
           <div style={sectionCard}>
             <h2 style={{ marginTop: 0 }}>Founders</h2>
-            <p style={{ marginTop: 6, opacity: 0.8 }}>Team behind MoodNest .</p>
+            <p style={{ marginTop: 6, opacity: 0.78 }}>Team behind MoodNest.</p>
 
             <div style={foundersGrid} className="mn_foundersGrid">
               {founders.map((f) => (
@@ -249,66 +253,32 @@ const Login = () => {
               ))}
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
+            <div style={{ marginTop: 14, fontSize: 12, opacity: 0.65 }}>
               <b>© 2026 MoodNest LLC All rights reserved</b>.
             </div>
           </div>
         </section>
-      </div>
+      </main>
 
-      {/* ✅ ONLY MOBILE RESPONSIVE FIXES (DESKTOP SAME) */}
+      {/* RESPONSIVE */}
       <style>{`
         @media (max-width: 980px) {
-          .mn_topGrid {
-            grid-template-columns: 1fr !important;
-            min-height: auto !important;
-          }
-          .mn_loginCard {
-            margin-top: 10px;
-          }
+          .mn_topGrid { grid-template-columns: 1fr !important; }
+          .mn_loginCard { margin-top: 14px; }
+          .mn_heroLeft { max-width: 100% !important; }
         }
-
         @media (max-width: 640px) {
-          .mn_login_page {
-            padding: 14px !important;
-          }
-
-          .mn_heroTitle {
-            font-size: 30px !important;
-            line-height: 1.12 !important;
-          }
-
-          .mn_heroDesc {
-            font-size: 14.5px !important;
-          }
-
-          .mn_chipRow span {
-            font-size: 12px !important;
-            padding: 6px 10px !important;
-          }
-
-          .mn_miniGrid {
-            grid-template-columns: 1fr !important;
-          }
-
-          .mn_foundersGrid {
-            grid-template-columns: repeat(2, 1fr) !important;
-            gap: 12px !important;
-          }
-
-          /* ✅ Founder photo: FULL rectangular like before + fits mobile */
-          .mn_founderPhotoWrap {
-            height: 220px !important;
-          }
+          .mn_heroInner { padding: 18px !important; }
+          .mn_heroTitle { font-size: 32px !important; line-height: 1.12 !important; }
+          .mn_heroDesc { font-size: 14.5px !important; }
+          .mn_chipRow span { font-size: 12px !important; padding: 6px 10px !important; }
+          .mn_miniGrid { grid-template-columns: 1fr !important; }
+          .mn_foundersGrid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+          .mn_founderPhotoWrap { height: 220px !important; }
         }
-
         @media (max-width: 420px) {
-          .mn_foundersGrid {
-            grid-template-columns: 1fr !important;
-          }
-          .mn_founderPhotoWrap {
-            height: 260px !important;
-          }
+          .mn_foundersGrid { grid-template-columns: 1fr !important; }
+          .mn_founderPhotoWrap { height: 260px !important; }
         }
       `}</style>
     </div>
@@ -323,13 +293,12 @@ const FounderCard = ({ f }) => {
       style={{
         ...founderCard,
         transform: hover ? "translateY(-6px)" : "translateY(0px)",
-        boxShadow: hover ? "0 16px 35px rgba(0,0,0,0.12)" : founderCard.boxShadow,
+        boxShadow: hover ? "0 18px 40px rgba(0,0,0,0.12)" : founderCard.boxShadow,
         border: hover ? "1px solid #e7e7ff" : founderCard.border,
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      {/* ✅ FULL RECT PHOTO (same as before) */}
       <div style={photoWrapper} className="mn_founderPhotoWrap">
         <img
           src={f.photo}
@@ -342,7 +311,7 @@ const FounderCard = ({ f }) => {
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 800, fontSize: 15 }}>{f.name}</div>
+        <div style={{ fontWeight: 850, fontSize: 15 }}>{f.name}</div>
         <div style={{ fontSize: 13, opacity: 0.72, marginTop: 3 }}>{f.branch}</div>
 
         <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 12 }}>
@@ -360,90 +329,122 @@ const FounderCard = ({ f }) => {
 
 /* ------------------ STYLES ------------------ */
 
-const pageWrap = {
+const page = {
   minHeight: "100vh",
+  background: "#f6f7fb",
+};
 
-  backgroundImage: `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url(${f5})`,
-
+const heroSection = {
+  position: "relative",
+  minHeight: "100vh",
+  backgroundImage: `url(${f5})`,
   backgroundSize: "cover",
-
   backgroundPosition: "center",
-
   backgroundRepeat: "no-repeat",
+};
 
+const heroOverlay = {
+  position: "absolute",
+  inset: 0,
+  background:
+    "radial-gradient(900px 500px at 15% 20%, rgba(255,255,255,0.12), transparent), linear-gradient(90deg, rgba(0,0,0,0.70) 0%, rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.25) 100%)",
+};
+
+const heroInner = {
+  position: "relative",
   padding: 24,
 };
 
-const container = {
-  maxWidth: 1100,
+const contentWrap = {
+  maxWidth: 1150,
   margin: "0 auto",
+  padding: "0 24px",
 };
 
-const topGrid = {
+const heroGrid = {
+  maxWidth: 1150,
+  margin: "0 auto",
   display: "grid",
-  gridTemplateColumns: "1.2fr 1fr",
-  gap: 22,
+  gridTemplateColumns: "1.15fr 1fr",
+  gap: 24,
   alignItems: "center",
-  minHeight: "80vh",
+  minHeight: "calc(100vh - 48px)",
 };
 
-const pill = {
-  display: "inline-block",
-  padding: "6px 12px",
+const heroLeft = {
+  maxWidth: 640,
+  color: "#fff",
+};
+
+const heroPill = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "8px 14px",
   borderRadius: 999,
-  border: "1px solid #e5e7eb",
-  background: "rgba(255,255,255,0.9)",
+  border: "1px solid rgba(255,255,255,0.22)",
+  background: "rgba(255,255,255,0.10)",
   fontSize: 13,
-  backdropFilter: "blur(6px)",
+  backdropFilter: "blur(10px)",
 };
 
 const heroTitle = {
   margin: "14px 0 10px",
-  fontSize: 44,
-  lineHeight: 1.1,
+  fontSize: 52,
+  lineHeight: 1.02,
+  letterSpacing: "-0.5px",
+  textShadow: "0 10px 30px rgba(0,0,0,0.35)",
 };
 
 const heroDesc = {
   margin: 0,
-  opacity: 0.82,
+  opacity: 0.92,
   fontSize: 16,
-  maxWidth: 560,
-  lineHeight: 1.55,
+  lineHeight: 1.7,
+  maxWidth: 580,
+  textShadow: "0 10px 28px rgba(0,0,0,0.25)",
+};
+
+const heroMiniNote = {
+  marginTop: 16,
+  fontSize: 12.5,
+  opacity: 0.8,
 };
 
 const chipRow = {
   display: "flex",
   gap: 10,
   flexWrap: "wrap",
-  marginTop: 16,
+  marginTop: 18,
 };
 
 const chip = {
-  padding: "7px 12px",
+  padding: "8px 12px",
   borderRadius: 999,
-  border: "1px solid #e5e7eb",
-  background: "rgba(255,255,255,0.9)",
+  border: "1px solid rgba(255,255,255,0.22)",
+  background: "rgba(255,255,255,0.12)",
   fontSize: 13,
-  backdropFilter: "blur(6px)",
+  color: "#fff",
+  backdropFilter: "blur(10px)",
 };
 
 const loginCard = {
   background: "rgba(255,255,255,0.92)",
-  borderRadius: 20,
-  padding: 24,
-  boxShadow: "0 14px 35px rgba(0,0,0,0.10)",
-  border: "1px solid rgba(229,231,235,0.9)",
-  backdropFilter: "blur(10px)",
+  borderRadius: 22,
+  padding: 26,
+  boxShadow: "0 24px 70px rgba(0,0,0,0.25)",
+  border: "1px solid rgba(255,255,255,0.35)",
+  backdropFilter: "blur(14px)",
 };
 
-const tinyHint = { fontSize: 12, opacity: 0.65 };
+const tinyHint = { fontSize: 12, opacity: 0.75 };
 
 const msgBox = {
   marginTop: 10,
   padding: 10,
   borderRadius: 12,
-  border: "1px solid #eee",
-  background: "#fafafa",
+  border: "1px solid rgba(0,0,0,0.08)",
+  background: "rgba(0,0,0,0.03)",
   fontSize: 14,
 };
 
@@ -451,9 +452,10 @@ const inputStyle = {
   width: "100%",
   padding: 12,
   borderRadius: 12,
-  border: "1px solid #e5e7eb",
+  border: "1px solid rgba(0,0,0,0.10)",
   marginTop: 10,
   outline: "none",
+  background: "rgba(255,255,255,0.96)",
 };
 
 const primaryBtn = {
@@ -465,29 +467,28 @@ const primaryBtn = {
   color: "#fff",
   marginTop: 12,
   cursor: "pointer",
-  fontWeight: 700,
+  fontWeight: 800,
 };
 
 const secondaryBtn = {
   width: "100%",
   padding: 12,
   borderRadius: 12,
-  border: "1px solid #e5e7eb",
+  border: "1px solid rgba(0,0,0,0.10)",
   background: "#fff",
   marginTop: 10,
   cursor: "pointer",
-  fontWeight: 700,
+  fontWeight: 800,
 };
 
 const tinyNote = { marginTop: 10, fontSize: 12, opacity: 0.7 };
 
 const sectionCard = {
-  background: "rgba(255,255,255,0.95)",
-  borderRadius: 20,
-  padding: 20,
-  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+  background: "rgba(255,255,255,0.98)",
+  borderRadius: 22,
+  padding: 22,
+  boxShadow: "0 14px 36px rgba(0,0,0,0.08)",
   border: "1px solid rgba(240,240,240,1)",
-  backdropFilter: "blur(8px)",
 };
 
 const miniGrid = {
@@ -498,11 +499,11 @@ const miniGrid = {
 };
 
 const miniCard = {
-  border: "1px solid #eee",
-  borderRadius: 16,
+  border: "1px solid rgba(0,0,0,0.06)",
+  borderRadius: 18,
   padding: 14,
   background: "#ffffff",
-  boxShadow: "0 8px 18px rgba(0,0,0,0.05)",
+  boxShadow: "0 10px 22px rgba(0,0,0,0.06)",
 };
 
 const miniDesc = { fontSize: 13, opacity: 0.75, marginTop: 4 };
@@ -515,23 +516,21 @@ const foundersGrid = {
 };
 
 const founderCard = {
-  border: "1px solid #eee",
-  borderRadius: 20,
+  border: "1px solid rgba(0,0,0,0.06)",
+  borderRadius: 22,
   padding: 16,
   background: "linear-gradient(145deg, #ffffff, #f3f4f6)",
-  boxShadow: "0 10px 22px rgba(0,0,0,0.08)",
+  boxShadow: "0 12px 26px rgba(0,0,0,0.08)",
   textAlign: "center",
   transition: "all 0.25s ease",
-  fontFamily: "'Outfit', sans-serif",
 };
 
-/* ✅ FULL RECTANGULAR PHOTO (same as before) */
 const photoWrapper = {
   width: "100%",
   height: 260,
-  borderRadius: 16,
+  borderRadius: 18,
   overflow: "hidden",
-  border: "1px solid #eee",
+  border: "1px solid rgba(0,0,0,0.06)",
   background: "#f9fafb",
 };
 
@@ -549,13 +548,12 @@ const socialBtn = {
   alignItems: "center",
   justifyContent: "center",
   borderRadius: 12,
-  border: "1px solid #e5e7eb",
-  background: "#f9fafb",
+  border: "1px solid rgba(0,0,0,0.10)",
+  background: "#fff",
   textDecoration: "none",
   color: "#111",
-  fontWeight: 800,
+  fontWeight: 900,
   fontSize: 13,
-  transition: "all 0.2s ease",
 };
 
 export default Login;
