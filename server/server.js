@@ -23,6 +23,9 @@ const allowedOrigins = [
   "http://localhost:5173",
 
   "https://smartnearbyapp.vercel.app",
+  "https://moodnest.vercel.app",
+  "https://www.moodnest.in",
+  "https://moodnest.in"
 
   // optional: if using custom domain later
 ];
