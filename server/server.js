@@ -13,7 +13,6 @@ const searchRoutes = require("./routes/search");
 
 const app = express();
 
-
 // =====================================================
 // ✅ PERFECT CORS CONFIG FOR VERCEL + MOBILE + RENDER
 // =====================================================
@@ -25,58 +24,51 @@ const allowedOrigins = [
   "https://smartnearbyapp.vercel.app",
   "https://moodnest.vercel.app",
   "https://www.moodnest.in",
-  "https://moodnest.in"
-
-  // optional: if using custom domain later
+  "https://moodnest.in",
 ];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
+// ✅ Keep CORS options in a variable so we can reuse for OPTIONS
+const corsOptions = {
+  origin: function (origin, callback) {
+    // allow mobile apps, curl, postman
+    if (!origin) return callback(null, true);
 
-      // allow mobile apps, curl, postman
-      if (!origin) return callback(null, true);
+    // allow exact matches
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
 
-      // allow exact matches
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+    // allow ALL vercel preview domains
+    if (origin.endsWith(".vercel.app")) {
+      return callback(null, true);
+    }
 
-      // allow ALL vercel preview domains
-      if (origin.endsWith(".vercel.app")) {
-        return callback(null, true);
-      }
+    console.log("❌ CORS blocked:", origin);
+    return callback(new Error("CORS blocked"));
+  },
 
-      console.log("❌ CORS blocked:", origin);
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
 
-      return callback(new Error("CORS blocked"));
-    },
+  allowedHeaders: ["Content-Type", "Authorization"],
 
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  credentials: true,
+};
 
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization"
-    ],
-
-    credentials: true
-  })
-);
-
+// ✅ Apply CORS
+app.use(cors(corsOptions));
 
 // =====================================================
-// ✅ IMPORTANT: HANDLE PREFLIGHT PROPERLY
+// ✅ IMPORTANT: HANDLE PREFLIGHT PROPERLY (FIXED)
 // =====================================================
-
-app.options("*", cors());
-
+// ❌ app.options("*", cors());   // this crashes on Node 22 / new routers
+// ✅ Use "/*" and same cors options
+app.options("/*", cors(corsOptions)); // ✅ FIXED
 
 // =====================================================
 // ✅ BODY PARSER
 // =====================================================
 
 app.use(express.json({ limit: "5mb" }));
-
 
 // =====================================================
 // ✅ PREVENT CACHING
@@ -85,19 +77,14 @@ app.use(express.json({ limit: "5mb" }));
 app.disable("etag");
 
 app.use((req, res, next) => {
-
   res.setHeader(
     "Cache-Control",
     "no-store, no-cache, must-revalidate, proxy-revalidate"
   );
-
   res.setHeader("Pragma", "no-cache");
-
   res.setHeader("Expires", "0");
-
   next();
 });
-
 
 // =====================================================
 // ✅ STATIC UPLOADS
@@ -111,79 +98,56 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-
 // =====================================================
 // ✅ CONNECT DATABASE
 // =====================================================
 
 connectDB();
 
-
 // =====================================================
 // ✅ HOME
 // =====================================================
 
 app.get("/", (req, res) => {
-
   res.send("SmartNearbyApp Backend Running ✅");
-
 });
-
 
 // =====================================================
 // ✅ API ROUTES
 // =====================================================
 
 app.use("/api/auth", authRoutes);
-
 app.use("/api/search", searchRoutes);
 
 app.use("/api/favorites", require("./routes/favorites"));
-
 app.use("/api/google", require("./routes/googleSearch"));
-
 app.use("/api/google/details", require("./routes/googleDetails"));
-
 app.use("/api/google/photo", require("./routes/googlePhoto"));
-
 app.use("/api/import", require("./routes/importGoogle"));
-
 app.use("/api/google-actions", require("./routes/googleSave"));
-
 app.use("/api/upload", require("./routes/upload"));
-
 
 // =====================================================
 // ✅ 404 HANDLER
 // =====================================================
 
 app.use((req, res) => {
-
   res.status(404).json({
-
-    message: `Route not found: ${req.method} ${req.originalUrl}`
-
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
   });
-
 });
-
 
 // =====================================================
 // ✅ GLOBAL ERROR HANDLER
 // =====================================================
 
 app.use((err, req, res, next) => {
-
   console.error("🔥 SERVER ERROR:", err.message);
 
   res.status(500).json({
-
-    message: err.message || "Internal Server Error"
-
+    message: err.message || "Internal Server Error",
   });
-
 });
-
 
 // =====================================================
 // ✅ START SERVER
@@ -192,7 +156,5 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-
   console.log(`Server running on port ${PORT}`);
-
 });
