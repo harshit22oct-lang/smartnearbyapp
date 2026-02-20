@@ -5,6 +5,7 @@ import f1 from "../assets/f1.jpg";
 import f2 from "../assets/f2.jpg";
 import f3 from "../assets/f3.jpg";
 import f4 from "../assets/f4.jpg";
+import f5 from "../assets/f4.jpg";
 
 const API = process.env.REACT_APP_API_URL; // ✅ LIVE API (Vercel env)
 
@@ -361,8 +362,15 @@ const FounderCard = ({ f }) => {
 
 const pageWrap = {
   minHeight: "100vh",
-  background:
-    "radial-gradient(1200px 600px at 20% 10%, rgba(17,24,39,0.10), transparent), radial-gradient(900px 500px at 90% 20%, rgba(99,102,241,0.12), transparent), #f6f7fb",
+
+  backgroundImage: `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url(${f5})`,
+
+  backgroundSize: "cover",
+
+  backgroundPosition: "center",
+
+  backgroundRepeat: "no-repeat",
+
   padding: 24,
 };
 
