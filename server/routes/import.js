@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { google } = require("googleapis");
 
+// POST /api/import/google-sheet
 router.post("/google-sheet", async (req, res) => {
   try {
     const { sheetId, rowNumber, sheetName } = req.body || {};
@@ -28,9 +29,33 @@ router.post("/google-sheet", async (req, res) => {
     if (!clientEmail) return res.status(500).json({ error: "Missing GOOGLE_SHEETS_CLIENT_EMAIL" });
     if (!rawKey) return res.status(500).json({ error: "Missing GOOGLE_SHEETS_PRIVATE_KEY" });
 
-    let privateKey = rawKey;
-    if (privateKey.includes("\\n")) privateKey = privateKey.replace(/\\n/g, "\n");
-    privateKey = privateKey.replace(/\r/g, "").trim();
+    // ✅ Normalize key for BOTH cases:
+    // - Render multiline
+    // - local .env one-line with \n
+    let privateKey = String(rawKey || "");
+
+    // remove wrapping quotes if any (sometimes copied with quotes)
+    privateKey = privateKey.replace(/^"+|"+$/g, "").trim();
+
+    // convert literal \n into real newlines
+    privateKey = privateKey.replace(/\\n/g, "\n");
+
+    // remove CRLF
+    privateKey = privateKey.replace(/\r/g, "");
+
+    // remove leading/trailing spaces on each line (paste issues)
+    privateKey = privateKey
+      .split("\n")
+      .map((line) => line.trim())
+      .join("\n")
+      .trim();
+
+    if (!privateKey.includes("BEGIN PRIVATE KEY") || !privateKey.includes("END PRIVATE KEY")) {
+      return res.status(500).json({
+        error:
+          "GOOGLE_SHEETS_PRIVATE_KEY format invalid. Must include BEGIN/END PRIVATE KEY lines.",
+      });
+    }
 
     const auth = new google.auth.JWT({
       email: clientEmail,
@@ -41,10 +66,10 @@ router.post("/google-sheet", async (req, res) => {
       ],
     });
 
-    // ✅ Attach quota project identity (fixes “unregistered callers” cases)
+    // ✅ attach quota project identity (helps “unregistered callers”)
     if (quotaProject) auth.quotaProjectId = quotaProject;
 
-    // ✅ Force token creation (ensures request is NOT anonymous)
+    // ✅ force token fetch (ensures request is not anonymous)
     await auth.authorize();
 
     const sheets = google.sheets({ version: "v4", auth });
