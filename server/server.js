@@ -10,6 +10,7 @@ const connectDB = require("./config/db");
 // routes
 const authRoutes = require("./routes/authRoutes");
 const searchRoutes = require("./routes/search");
+const importRoute = require("./routes/import");
 
 const app = express();
 
@@ -116,6 +117,7 @@ app.use("/api/google/photo", require("./routes/googlePhoto"));
 app.use("/api/import", require("./routes/importGoogle"));
 app.use("/api/google-actions", require("./routes/googleSave"));
 app.use("/api/upload", require("./routes/upload"));
+app.use("/api/import", importRoute);
 
 // =====================================================
 // ✅ 404 HANDLER
