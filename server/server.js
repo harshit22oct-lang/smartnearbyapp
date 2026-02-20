@@ -10,7 +10,12 @@ const connectDB = require("./config/db");
 // routes
 const authRoutes = require("./routes/authRoutes");
 const searchRoutes = require("./routes/search");
+
+// ✅ Sheet import router (must contain POST /google-sheet)
 const importRoute = require("./routes/import");
+
+// ✅ Old google import router (your renamed file)
+const importGoogleOldRoute = require("./routes/importGoogle_old");
 
 const app = express();
 
@@ -22,11 +27,9 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
 
-  // ✅ Your custom domain
   "https://moodnest.in",
   "https://www.moodnest.in",
 
-  // (optional) keep these if you still use vercel preview/testing
   "https://smartnearbyapp.vercel.app",
   "https://moodnest.vercel.app",
 ];
@@ -39,7 +42,7 @@ const corsOptions = {
     // allow exact matches
     if (allowedOrigins.includes(origin)) return callback(null, true);
 
-    // allow ALL vercel preview domains (safe even if you don't use now)
+    // allow ALL vercel preview domains
     if (origin.endsWith(".vercel.app")) return callback(null, true);
 
     console.log("❌ CORS blocked:", origin);
@@ -50,8 +53,6 @@ const corsOptions = {
   credentials: true,
 };
 
-// ✅ Apply CORS (this automatically handles OPTIONS preflight)
-// ❌ DO NOT add app.options("*") or app.options("/*") (it crashes on Render)
 app.use(cors(corsOptions));
 
 // =====================================================
@@ -82,11 +83,9 @@ app.use((req, res, next) => {
 // =====================================================
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
-
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
-
 app.use("/uploads", express.static(UPLOAD_DIR));
 
 // =====================================================
@@ -114,10 +113,14 @@ app.use("/api/favorites", require("./routes/favorites"));
 app.use("/api/google", require("./routes/googleSearch"));
 app.use("/api/google/details", require("./routes/googleDetails"));
 app.use("/api/google/photo", require("./routes/googlePhoto"));
-app.use("/api/import", require("./routes/importGoogle"));
 app.use("/api/google-actions", require("./routes/googleSave"));
 app.use("/api/upload", require("./routes/upload"));
+
+// ✅ NEW: Sheet import routes (NO conflict)
 app.use("/api/import", importRoute);
+
+// ✅ NEW: Old google import routes moved to separate base path
+app.use("/api/import-google", importGoogleOldRoute);
 
 // =====================================================
 // ✅ 404 HANDLER

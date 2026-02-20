@@ -470,7 +470,7 @@ const fetchFromSheet = async () => {
   // ✅ Import Google -> Mongo (NOTE: backend must set city for new Business)
   const importGooglePlace = async (p) => {
     const res = await axios.post(
-      `${API}/api/import`,
+      `${API}/api/import-google`,
       {
         city: normalizeCity(selectedCity),
         placeId: p.placeId,
@@ -478,6 +478,7 @@ const fetchFromSheet = async () => {
         address: p.address,
         rating: p.rating === "N/A" ? null : Number(p.rating),
         photoRef: p.photoRef || "",
+       
       },
       authHeader
     );
