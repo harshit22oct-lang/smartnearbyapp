@@ -1,0 +1,17 @@
+# Node modules
+node_modules
+**/node_modules
+
+# Uploads
+server/uploads
+**/uploads
+
+# Environment variables (VERY IMPORTANT)
+.env
+**/.env
+server/.env
+client/.env
+
+# Build folders
+build
+dist
