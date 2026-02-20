@@ -79,12 +79,74 @@ const Dashboard = () => {
   const [urlImages, setUrlImages] = useState([]); // string[]
   const [uploading, setUploading] = useState(false);
 
-  const [msg, setMsg] = useState("");
+const [msg, setMsg] = useState("");
 
-  const authHeader = useMemo(
-    () => ({ headers: { Authorization: `Bearer ${token}` } }),
-    [token]
-  );
+// ✅ Google Form import states (NEW)
+const [importSheetId, setImportSheetId] = useState("");
+const [importRow, setImportRow] = useState(2);
+const [importBusy, setImportBusy] = useState(false);
+const [importMsg, setImportMsg] = useState("");
+
+const authHeader = useMemo(
+  () => ({ headers: { Authorization: `Bearer ${token}` } }),
+  [token]
+);
+
+
+
+// ✅ Google Sheet Import function (NEW)
+const fetchFromSheet = async () => {
+  try {
+    setImportBusy(true);
+    setImportMsg("");
+
+    const sheetId = importSheetId.trim();
+    const rowNumber = Number(importRow);
+
+    if (!sheetId || !rowNumber || rowNumber < 2) {
+      setImportMsg("Enter valid Sheet ID and Row (>=2)");
+      setImportBusy(false);
+      return;
+    }
+
+    const res = await axios.post(
+      `${API}/api/import/google-sheet`,
+      { sheetId, rowNumber },
+      authHeader
+    );
+
+    const d = res.data || {};
+    if (d.city) setSelectedCity(d.city);
+
+    // Auto fill admin form
+    setName(d.name || "");
+    setCategory(d.category || "");
+    setAddress(d.address || "");
+    setHighlight(d.highlight || "");
+    setWhy(d.why || "");
+
+    setTagsInput((d.tags || []).join(", "));
+    setActivitiesInput((d.activities || []).join(", "));
+
+    setUrlImages(d.images || []);
+
+    setImportMsg("✅ Imported successfully. Now click Curate.");
+
+  } catch (err) {
+
+    setImportMsg("❌ Import failed");
+
+  } finally {
+
+    setImportBusy(false);
+
+  }
+};
+
+
+// ----------------
+// Helpers
+// ----------------
 
   // ----------------
   // Helpers
@@ -945,6 +1007,79 @@ const Dashboard = () => {
             </p>
 
             <form onSubmit={addBusiness} style={{ maxWidth: 760 }}>
+              {/* ✅ Import from Google Form (Sheet) */}
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  border: "1px solid rgba(0,0,0,0.12)",
+                  background: "#f7f8ff",
+                  marginBottom: 14,
+                }}
+              >
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>
+                  Import from Google Form (Sheet)
+                </div>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <input
+                    value={importSheetId}
+                    onChange={(e) => setImportSheetId(e.target.value)}
+                    placeholder="Paste Sheet ID (between /d/ and /edit)"
+                    style={{
+                      flex: "1 1 360px",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid #ddd",
+                      background: "#fff",
+                      outline: "none",
+                    }}
+                  />
+
+                  <input
+                    type="number"
+                    min={2}
+                    value={importRow}
+                    onChange={(e) => setImportRow(e.target.value)}
+                    placeholder="Row"
+                    style={{
+                      width: 120,
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid #ddd",
+                      background: "#fff",
+                      outline: "none",
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={fetchFromSheet}
+                    disabled={importBusy}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      border: "none",
+                      fontWeight: 900,
+                      background: "#111",
+                      color: "#fff",
+                      cursor: importBusy ? "not-allowed" : "pointer",
+                      opacity: importBusy ? 0.7 : 1,
+                    }}
+                  >
+                    {importBusy ? "Fetching..." : "Fetch"}
+                  </button>
+                </div>
+
+                {importMsg ? (
+                  <div style={{ marginTop: 10, fontWeight: 700 }}>
+                    {importMsg}
+                  </div>
+                ) : null}
+              </div>
+
+              
+
               {/* Basic */}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <input
