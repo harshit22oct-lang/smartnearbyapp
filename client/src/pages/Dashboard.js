@@ -134,7 +134,12 @@ const fetchFromSheet = async () => {
 
   } catch (err) {
 
-    setImportMsg("❌ Import failed");
+    setImportMsg(
+      err?.response?.data?.error ||
+      err?.response?.data?.message ||
+      err?.message ||
+      "❌ Import failed"
+    );
 
   } finally {
 
