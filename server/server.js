@@ -14,61 +14,51 @@ const searchRoutes = require("./routes/search");
 const app = express();
 
 // =====================================================
-// ✅ PERFECT CORS CONFIG FOR VERCEL + MOBILE + RENDER
+// ✅ CORS CONFIG (RENDER SAFE)
 // =====================================================
 
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
 
+  // ✅ Your custom domain
+  "https://moodnest.in",
+  "https://www.moodnest.in",
+
+  // (optional) keep these if you still use vercel preview/testing
   "https://smartnearbyapp.vercel.app",
   "https://moodnest.vercel.app",
-  "https://www.moodnest.in",
-  "https://moodnest.in",
 ];
 
-// ✅ Keep CORS options in a variable so we can reuse for OPTIONS
 const corsOptions = {
   origin: function (origin, callback) {
     // allow mobile apps, curl, postman
     if (!origin) return callback(null, true);
 
     // allow exact matches
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
+    if (allowedOrigins.includes(origin)) return callback(null, true);
 
-    // allow ALL vercel preview domains
-    if (origin.endsWith(".vercel.app")) {
-      return callback(null, true);
-    }
+    // allow ALL vercel preview domains (safe even if you don't use now)
+    if (origin.endsWith(".vercel.app")) return callback(null, true);
 
     console.log("❌ CORS blocked:", origin);
     return callback(new Error("CORS blocked"));
   },
-
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-
   allowedHeaders: ["Content-Type", "Authorization"],
-
   credentials: true,
 };
 
-// ✅ Apply CORS
+// ✅ Apply CORS (this automatically handles OPTIONS preflight)
+// ❌ DO NOT add app.options("*") or app.options("/*") (it crashes on Render)
 app.use(cors(corsOptions));
-
-// =====================================================
-// ✅ IMPORTANT: HANDLE PREFLIGHT PROPERLY (FIXED)
-// =====================================================
-// ❌ app.options("*", cors());   // this crashes on Node 22 / new routers
-// ✅ Use "/*" and same cors options
-app.options("/*", cors(corsOptions)); // ✅ FIXED
 
 // =====================================================
 // ✅ BODY PARSER
 // =====================================================
 
 app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: true }));
 
 // =====================================================
 // ✅ PREVENT CACHING
@@ -109,7 +99,7 @@ connectDB();
 // =====================================================
 
 app.get("/", (req, res) => {
-  res.send("SmartNearbyApp Backend Running ✅");
+  res.send("MoodNest Backend Running ✅");
 });
 
 // =====================================================
