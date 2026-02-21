@@ -3,11 +3,13 @@ const router = express.Router();
 const { google } = require("googleapis");
 const fs = require("fs");
 const path = require("path");
+const protect = require("../middleware/authMiddleware");
 
-// Save downloaded form uploads here (same folder your server already serves)
+// Save downloaded form uploads here
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+const normCity = (s) => String(s || "").trim().toLowerCase();
 const isHttpUrl = (s) => /^https?:\/\/.+/i.test(String(s || "").trim());
 
 const splitList = (raw) => {
@@ -19,25 +21,19 @@ const splitList = (raw) => {
     .filter(Boolean);
 };
 
-// Extract Drive fileId from common link formats
 const extractDriveFileId = (url) => {
   const u = String(url || "").trim();
   if (!u) return null;
 
-  // https://drive.google.com/file/d/<ID>/view
   let m = u.match(/\/file\/d\/([^/]+)/i);
   if (m && m[1]) return m[1];
 
-  // https://drive.google.com/open?id=<ID>
   m = u.match(/[?&]id=([^&]+)/i);
   if (m && m[1]) return m[1];
 
-  // https://drive.google.com/uc?id=<ID>&export=download
   m = u.match(/\/uc\?[^#]*id=([^&]+)/i);
   if (m && m[1]) return m[1];
 
-  // Sometimes links are like: https://drive.google.com/drive/folders/<ID> (not a file)
-  // Not supported for folder -> return null
   if (/\/folders\//i.test(u)) return null;
 
   return null;
@@ -52,19 +48,18 @@ const safeExtFromMime = (mime) => {
   if (m.includes("bmp")) return ".bmp";
   if (m.includes("tiff")) return ".tiff";
   if (m.includes("pdf")) return ".pdf";
-  return ""; // fallback
+  return "";
 };
 
 const sanitizeFileName = (name) => {
   const base = String(name || "file")
     .replace(/[^\w.\-]+/g, "_")
     .replace(/_+/g, "_")
-    .slice(0, 80);
+    .slice(0, 60);
   return base || "file";
 };
 
 const downloadDriveFileToUploads = async (drive, fileId) => {
-  // 1) metadata (name + mimetype)
   const metaRes = await drive.files.get({
     fileId,
     fields: "id,name,mimeType",
@@ -74,14 +69,14 @@ const downloadDriveFileToUploads = async (drive, fileId) => {
   const fileName = sanitizeFileName(metaRes?.data?.name || `drive_${fileId}`);
   const mimeType = metaRes?.data?.mimeType || "";
 
-  // If name has no ext, try from mime
   const hasExt = /\.[a-z0-9]{2,5}$/i.test(fileName);
   const ext = hasExt ? "" : safeExtFromMime(mimeType);
 
-  const finalName = `${Date.now()}_${fileId}${ext || ""}_${fileName}`;
+  let finalName = `${Date.now()}_${fileId}${ext || ""}_${fileName}`;
+  finalName = finalName.slice(0, 160); // ✅ avoid giant filenames
+
   const absPath = path.join(UPLOAD_DIR, finalName);
 
-  // 2) download stream
   const fileRes = await drive.files.get(
     { fileId, alt: "media", supportsAllDrives: true },
     { responseType: "stream" }
@@ -96,13 +91,14 @@ const downloadDriveFileToUploads = async (drive, fileId) => {
       .on("finish", resolve);
   });
 
-  // Return relative URL that your app already serves from server.js: app.use("/uploads", static)
   return `/uploads/${finalName}`;
 };
 
-// POST /api/import/google-sheet
-router.post("/google-sheet", async (req, res) => {
+// ✅ POST /api/import/google-sheet  (ADMIN ONLY)
+router.post("/google-sheet", protect, async (req, res) => {
   try {
+    if (!req.user?.isAdmin) return res.status(403).json({ error: "Admin only" });
+
     const { sheetId, rowNumber, sheetName } = req.body || {};
 
     const sid = String(sheetId || "").trim();
@@ -120,14 +116,10 @@ router.post("/google-sheet", async (req, res) => {
       String(process.env.GOOGLE_CLOUD_QUOTA_PROJECT || "").trim() ||
       String(process.env.GOOGLE_CLOUD_PROJECT || "").trim();
 
-    console.log("Sheets email exists?", !!clientEmail);
-    console.log("Sheets key length:", rawKey.length);
-    console.log("Quota project:", quotaProject || "(missing)");
-
     if (!clientEmail) return res.status(500).json({ error: "Missing GOOGLE_SHEETS_CLIENT_EMAIL" });
     if (!rawKey) return res.status(500).json({ error: "Missing GOOGLE_SHEETS_PRIVATE_KEY" });
 
-    // Normalize private key (Render multiline OR local one-line with \n)
+    // Normalize private key
     let privateKey = String(rawKey || "");
     privateKey = privateKey.replace(/^"+|"+$/g, "").trim();
     privateKey = privateKey.replace(/\\n/g, "\n");
@@ -140,12 +132,10 @@ router.post("/google-sheet", async (req, res) => {
 
     if (!privateKey.includes("BEGIN PRIVATE KEY") || !privateKey.includes("END PRIVATE KEY")) {
       return res.status(500).json({
-        error:
-          "GOOGLE_SHEETS_PRIVATE_KEY format invalid. Must include BEGIN/END PRIVATE KEY lines.",
+        error: "GOOGLE_SHEETS_PRIVATE_KEY format invalid. Must include BEGIN/END PRIVATE KEY lines.",
       });
     }
 
-    // ✅ Auth for both Sheets + Drive (needed for file upload downloads)
     const auth = new google.auth.JWT({
       email: clientEmail,
       key: privateKey,
@@ -170,46 +160,42 @@ router.post("/google-sheet", async (req, res) => {
     const row = response?.data?.values?.[0];
     if (!row) return res.status(404).json({ error: "Row not found" });
 
-    // --- Your existing mapping ---
+    // ✅ images cell mapping
     const rawImagesCell = row[12] || "";
     const parts = splitList(rawImagesCell);
 
-    // Convert Drive links -> /uploads/..., keep normal URLs as-is
+    // ✅ cap downloads to prevent abuse / slow calls
+    const MAX_IMAGES = 6;
+
     const images = [];
     for (const item of parts) {
       if (!item) continue;
+      if (images.length >= MAX_IMAGES) break;
 
-      // If already /uploads/ keep
       if (String(item).startsWith("/uploads/")) {
         images.push(String(item).trim());
         continue;
       }
 
-      // Normal http url
       if (isHttpUrl(item)) {
         const fileId = extractDriveFileId(item);
         if (fileId) {
-          // Download from Drive into /uploads
           try {
             const localUrl = await downloadDriveFileToUploads(drive, fileId);
             images.push(localUrl);
           } catch (e) {
-            // If download fails, keep original link as fallback (so admin still sees something)
             console.error("Drive download failed for", fileId, e?.message || e);
             images.push(item);
           }
         } else {
           images.push(item);
         }
-        continue;
       }
-
-      // Otherwise ignore unknown formats
     }
 
     const mapped = {
       name: row[1] || "",
-      city: String(row[2] || "").trim(),
+      city: normCity(row[2] || ""),
       category: row[3] || "",
       address: row[4] || "",
       phone: row[6] || "",
@@ -218,7 +204,7 @@ router.post("/google-sheet", async (req, res) => {
       activities: row[9] ? String(row[9]).split(",").map((a) => a.trim()).filter(Boolean) : [],
       highlight: row[10] || "",
       why: row[11] || "",
-      images, // ✅ now includes downloaded /uploads paths (when file upload links exist)
+      images,
     };
 
     return res.json(mapped);

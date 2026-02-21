@@ -19,7 +19,7 @@ const Dashboard = () => {
   // ✅ IMPORTANT: keep API inside component so hooks deps are valid (fixes Vercel CI ESLint)
   const apiBase = useMemo(() => process.env.REACT_APP_API_URL || "", []);
 
-  const token = useMemo(() => localStorage.getItem("token"), []);
+  const token = localStorage.getItem("token");
   const isBrowser = typeof window !== "undefined";
 
   const authHeader = useMemo(() => {
@@ -115,6 +115,7 @@ const Dashboard = () => {
   // Multi photos
   const fileInputRef = useRef(null);
   const [localFiles, setLocalFiles] = useState([]);
+  const [localPreviews, setLocalPreviews] = useState([]); // [{ key, url }]
   const [urlInput, setUrlInput] = useState("");
   const [urlImages, setUrlImages] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -165,6 +166,7 @@ const Dashboard = () => {
   // Helpers
   // ----------------
   const normalizeCity = useCallback((s) => (s || "").trim().toLowerCase(), []);
+  const fileKey = useCallback((f) => `${f.name}-${f.size}-${f.lastModified}`, []);
 
   const resolveUploadUrl = useCallback(
     (u) => {
@@ -704,7 +706,7 @@ const Dashboard = () => {
     setLocalFiles((prev) => {
       const next = [...prev];
       list.forEach((f) => {
-        const exists = next.some((x) => x.name === f.name && x.size === f.size);
+        const exists = next.some((x) => fileKey(x) === fileKey(f));
         if (!exists) next.push(f);
       });
       return next;
@@ -721,7 +723,8 @@ const Dashboard = () => {
       const formData = new FormData();
       localFiles.forEach((f) => formData.append("images", f));
 
-      const res = await axios.post(`${apiBase}/api/upload`, formData, {
+      const endpoint = user?.isAdmin ? "/api/upload" : "/api/upload/user-multi";
+      const res = await axios.post(`${apiBase}${endpoint}`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
@@ -734,7 +737,7 @@ const Dashboard = () => {
     } finally {
       setUploading(false);
     }
-  }, [apiBase, localFiles, token]);
+  }, [apiBase, localFiles, token, user?.isAdmin]);
 
   const addBusiness = useCallback(
     async (e) => {
@@ -1059,17 +1062,36 @@ const Dashboard = () => {
   }, [user?.isAdmin, fetchPendingSubmissions]);
 
   useEffect(() => {
+    const previews = (localFiles || []).map((f) => {
+      const key = fileKey(f);
+      return { key, url: URL.createObjectURL(f) };
+    });
+
+    setLocalPreviews(previews);
+
+    return () => {
+      previews.forEach((p) => {
+        try {
+          URL.revokeObjectURL(p.url);
+        } catch {}
+      });
+    };
+  }, [localFiles, fileKey]);
+
+  useEffect(() => {
     fetchEvents(selectedCity, q);
   }, [fetchEvents, selectedCity, q]);
 
   // ----------------
   // UI components
   // ----------------
-  const CityChip = useCallback(
-    ({ c }) => {
+  const CityChip = useMemo(() => {
+    return function CityChip({ c }) {
       const active = normalizeCity(c) === normalizeCity(selectedCity);
+
       return (
         <button
+          type="button"
           onClick={() => {
             setSelectedCity(c);
             setTimeout(() => saveDashState({ selectedCity: c }), 0);
@@ -1096,11 +1118,10 @@ const Dashboard = () => {
           {c}
         </button>
       );
-    },
-    [normalizeCity, q, saveDashState, searchNow, selectedCity]
-  );
+    };
+  }, [normalizeCity, selectedCity, q, saveDashState, searchNow]);
 
-  const previewUrlForLocal = useCallback((file) => URL.createObjectURL(file), []);
+  
 
   // ----------------
   // Render
@@ -1163,6 +1184,23 @@ const Dashboard = () => {
                 }}
               >
                 ➕ Submit a Place
+                
+              </button>
+            ) : null}
+            {user?.isAdmin ? (
+              <button
+                onClick={() => navigate("/admin/scan-ticket")}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(0,0,0,0.12)",
+                  background: "#111",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                }}
+              >
+                🎫 Scan Tickets
               </button>
             ) : null}
 
@@ -2329,7 +2367,7 @@ const Dashboard = () => {
                   <button
                     type="button"
                     onClick={async () => {
-                      if (!API || !authHeader) return;
+                      if (!apiBase|| !authHeader) return;
                       try {
                         setImportBusy(true);
                         setImportMsg("");
@@ -2663,7 +2701,7 @@ const Dashboard = () => {
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       {localFiles.map((f, idx) => (
                         <div
-                          key={`${f.name}-${f.size}-${idx}`}
+                          key={fileKey(f)}
                           style={{
                             width: 120,
                             borderRadius: 14,
@@ -2672,7 +2710,11 @@ const Dashboard = () => {
                             background: "rgba(255,255,255,0.85)",
                           }}
                         >
-                          <img alt="local" src={previewUrlForLocal(f)} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
+                          <img 
+                            alt="local"
+                            src={localPreviews.find((p) => p.key === fileKey(f))?.url || ""}
+                            style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }}
+                          />
                           <button
                             type="button"
                             onClick={() => setLocalFiles((prev) => prev.filter((_, i) => i !== idx))}

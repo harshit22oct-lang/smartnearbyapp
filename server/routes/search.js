@@ -21,13 +21,17 @@ const toNumOrNull = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
+const escapeRegex = (s) => String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 //
 // ✅ SEARCH by city + optional text
-// GET /api/search?city=bhopal&q=pizza
+// GET /api/search?city=bhopal&q=pizza&limit=80
 //
+// NOTE: keep protect if you want login required; otherwise remove protect.
 router.get("/", protect, async (req, res) => {
   const city = normCity(req.query.city);
   const q = String(req.query.q || "").trim();
+  const limit = Math.min(Math.max(Number(req.query.limit || 80), 1), 200);
 
   if (!city) return res.status(400).json({ message: "city is required" });
 
@@ -35,7 +39,8 @@ router.get("/", protect, async (req, res) => {
     const filter = { city };
 
     if (q) {
-      const re = new RegExp(q, "i");
+      const re = new RegExp(escapeRegex(q), "i");
+
       filter.$or = [
         { name: { $regex: re } },
         { category: { $regex: re } },
@@ -44,12 +49,18 @@ router.get("/", protect, async (req, res) => {
         { vibe: { $regex: re } },
         { why: { $regex: re } },
         { highlight: { $regex: re } },
-        { tags: { $in: [re] } },
-        { activities: { $in: [re] } },
+
+        // ✅ arrays of strings: regex works on elements
+        { tags: { $regex: re } },
+        { activities: { $regex: re } },
       ];
     }
 
-    const results = await Business.find(filter).sort({ createdAt: -1 });
+    const results = await Business.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
     return res.json(results);
   } catch (err) {
     console.error("❌ Search error:", err.message);
@@ -65,12 +76,11 @@ router.get("/:id", protect, async (req, res) => {
   try {
     const id = String(req.params.id || "").trim();
 
-    // ✅ clean error instead of throwing CastError
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: "Invalid business id" });
     }
 
-    const business = await Business.findById(id);
+    const business = await Business.findById(id).lean();
     if (!business) return res.status(404).json({ message: "Business not found" });
 
     return res.json(business);
@@ -111,17 +121,16 @@ router.put("/:id", protect, async (req, res) => {
       "images",
       "city",
       "rating",
-      "imageUrl", // optional: old single image support
-      "photoRef", // optional: old google photo ref support
-      "placeId",  // optional
-      "source",   // optional (if you want to change source)
+      "imageUrl",
+      "photoRef",
+      "placeId",
+      "source",
     ];
 
     allow.forEach((k) => {
       if (req.body?.[k] !== undefined) b[k] = req.body[k];
     });
 
-    // ✅ normalize important types
     if (req.body?.city !== undefined) b.city = normCity(req.body.city);
     if (req.body?.tags !== undefined) b.tags = toList(req.body.tags);
     if (req.body?.activities !== undefined) b.activities = toList(req.body.activities);
@@ -129,7 +138,7 @@ router.put("/:id", protect, async (req, res) => {
     if (req.body?.rating !== undefined) b.rating = toNumOrNull(req.body.rating);
     if (req.body?.instagrammable !== undefined) b.instagrammable = !!req.body.instagrammable;
 
-    // ✅ keep old imageUrl in sync if images updated and imageUrl empty
+    // keep old imageUrl in sync if images updated and imageUrl empty
     if (req.body?.images !== undefined) {
       if (!b.imageUrl) b.imageUrl = (b.images && b.images[0]) || "";
     }
@@ -137,6 +146,11 @@ router.put("/:id", protect, async (req, res) => {
     await b.save();
     return res.json(b);
   } catch (e) {
+    // ✅ friendly unique index error (placeId already exists)
+    if (e?.code === 11000) {
+      return res.status(400).json({ message: "Duplicate placeId already exists" });
+    }
+
     console.error("❌ Update place error:", e);
     return res.status(500).json({ message: "Failed to update place" });
   }
@@ -203,7 +217,6 @@ router.post("/", protect, async (req, res) => {
       address: String(address || "").trim(),
       rating: toNumOrNull(rating),
 
-      // ✅ keep old single image fields compatible
       imageUrl: String(imageUrl || "").trim() || firstImage,
       photoRef: String(photoRef || "").trim(),
       images: cleanImages,
@@ -229,6 +242,9 @@ router.post("/", protect, async (req, res) => {
 
     return res.status(201).json(business);
   } catch (err) {
+    if (err?.code === 11000) {
+      return res.status(400).json({ message: "Duplicate placeId already exists" });
+    }
     console.error("❌ Add business error:", err.message);
     return res.status(500).json({ message: "Server error (add business)" });
   }

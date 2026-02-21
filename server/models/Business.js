@@ -1,5 +1,15 @@
 const mongoose = require("mongoose");
 
+const cleanArray = (arr) =>
+  Array.isArray(arr)
+    ? arr
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    : [];
+
+const cleanLowerArray = (arr) =>
+  cleanArray(arr).map((x) => x.toLowerCase());
+
 const BusinessSchema = new mongoose.Schema(
   {
     city: {
@@ -10,37 +20,42 @@ const BusinessSchema = new mongoose.Schema(
       index: true,
     },
 
-    name: { type: String, required: true },
-    category: { type: String, default: "" },
-    location: { type: String, default: "" },
+    name: { type: String, required: true, trim: true },
+    category: { type: String, default: "", trim: true },
+    location: { type: String, default: "", trim: true },
 
-    address: { type: String, default: "" },
+    address: { type: String, default: "", trim: true },
     rating: { type: Number, default: null },
 
     // old single image support
-    imageUrl: { type: String, default: "" },
-    photoRef: { type: String, default: "" },
+    imageUrl: { type: String, default: "", trim: true },
+    photoRef: { type: String, default: "", trim: true },
 
-    // ✅ NEW: multiple curated images (uploaded or links)
+    // ✅ multiple curated images (uploaded or links)
     images: { type: [String], default: [] },
 
-    placeId: { type: String, default: "", index: true },
-    source: { type: String, default: "mongo" },
+    // google place id (optional)
+    placeId: { type: String, default: "", trim: true, index: true },
 
-    emoji: { type: String, default: "✨" },
-    vibe: { type: String, default: "" },
-    priceLevel: { type: String, default: "" },
-    bestTime: { type: String, default: "" },
-    highlight: { type: String, default: "" },
-    why: { type: String, default: "" },
-    tags: { type: [String], default: [] },
-    activities: { type: [String], default: [] },
+    // mongo/google
+    source: { type: String, default: "mongo", trim: true },
+
+    emoji: { type: String, default: "✨", trim: true },
+    vibe: { type: String, default: "", trim: true },
+    priceLevel: { type: String, default: "", trim: true },
+    bestTime: { type: String, default: "", trim: true },
+    highlight: { type: String, default: "", trim: true },
+    why: { type: String, default: "", trim: true },
+
+    tags: { type: [String], default: [], set: cleanLowerArray },
+    activities: { type: [String], default: [], set: cleanLowerArray },
+
     instagrammable: { type: Boolean, default: false },
 
-    // ✅ Option A: add instagram (so approve copies it)
     instagram: { type: String, trim: true, default: "" },
 
     curated: { type: Boolean, default: true },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -49,5 +64,15 @@ const BusinessSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ✅ prevent duplicate saved mongo cards for same google placeId (only when placeId exists)
+BusinessSchema.index(
+  { placeId: 1 },
+  { unique: true, partialFilterExpression: { placeId: { $type: "string", $ne: "" } } }
+);
+
+// ✅ performance indexes
+BusinessSchema.index({ city: 1, category: 1 });
+BusinessSchema.index({ city: 1, source: 1 });
 
 module.exports = mongoose.model("Business", BusinessSchema);

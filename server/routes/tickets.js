@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const protect = require("../middleware/authMiddleware");
 
+const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
 const QRCode = require("qrcode");
 
@@ -10,7 +11,87 @@ const Ticket = require("../models/Ticket");
 
 const isAdmin = (req) => !!req.user?.isAdmin;
 
-// ✅ Book ticket/pass (Phase 1: no payment, works for free & paid as "test")
+const signQrToken = (ticketMongoId, eventId) => {
+  if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET missing");
+  return jwt.sign(
+    { tid: String(ticketMongoId), eid: String(eventId) },
+    process.env.JWT_SECRET,
+    { expiresIn: "365d" }
+  );
+};
+
+const verifyQrToken = (token) => {
+  if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET missing");
+  return jwt.verify(token, process.env.JWT_SECRET);
+};
+
+// ✅ Shared secure validation flow (qrToken JWT)
+const validateQrTokenFlow = async ({ code, adminUserId }) => {
+  // 1) verify token
+  let payload;
+  try {
+    payload = verifyQrToken(code);
+  } catch {
+    return { status: 400, body: { message: "Invalid or expired QR" } };
+  }
+
+  const tid = payload?.tid;
+  if (!tid) return { status: 400, body: { message: "Invalid QR payload" } };
+
+  // 2) load ticket
+  const t = await Ticket.findById(tid)
+    .populate("event")
+    .populate("user", "name email profilePicture");
+
+  if (!t) return { status: 404, body: { message: "Ticket not found" } };
+
+  // 3) hard-bind token must match stored token
+  if (String(t.qrToken || "") !== String(code || "")) {
+    return { status: 400, body: { message: "QR does not match ticket" } };
+  }
+
+  // (optional) event bind
+  if (payload?.eid && String(t.event?._id) !== String(payload.eid)) {
+    return { status: 400, body: { message: "QR event mismatch" } };
+  }
+
+  // 4) prevent double use
+  if (t.status === "validated") {
+    return {
+      status: 409,
+      body: {
+        ok: false,
+        message: `Already Verified at ${t.scannedAt ? new Date(t.scannedAt).toLocaleString() : ""}`,
+        ticket: t,
+      },
+    };
+  }
+
+  if (t.status && t.status !== "unused") {
+    return {
+      status: 409,
+      body: { ok: false, message: `Ticket is ${t.status}`, ticket: t },
+    };
+  }
+
+  // 5) mark validated
+  const now = new Date();
+  t.status = "validated";
+
+  // audit fields
+  t.scannedAt = now;
+  t.scannedBy = adminUserId;
+
+  // optional extra fields (only if your schema allows; harmless if not strict)
+  t.validatedAt = now;
+  t.validatedBy = adminUserId;
+
+  await t.save();
+
+  return { status: 200, body: { ok: true, message: "Verified ✅", ticket: t } };
+};
+
+// ✅ Book ticket/pass
 // POST /api/tickets/book  { eventId }
 router.post("/book", protect, async (req, res) => {
   try {
@@ -20,13 +101,12 @@ router.post("/book", protect, async (req, res) => {
     const ev = await Event.findById(eventId);
     if (!ev) return res.status(404).json({ message: "Event not found" });
 
-    // ✅ show button only when curated+hasTickets (also enforce here)
+    // ✅ enforce button rules
     if (!ev.isCurated || !ev.hasTickets) {
       return res.status(400).json({ message: "Tickets not available for this event" });
     }
 
-    // ✅ Step 3 — Block booking if no profile picture
-    // profile picture check
+    // ✅ block booking if no profile picture
     if (!req.user?.profilePicture) {
       return res.status(400).json({
         code: "PROFILE_REQUIRED",
@@ -34,9 +114,21 @@ router.post("/book", protect, async (req, res) => {
       });
     }
 
-    const ticketId = uuidv4();
-    const qrBase64 = await QRCode.toDataURL(ticketId); // png base64
+    // ✅ prevent double booking
+    const existing = await Ticket.findOne({ event: ev._id, user: req.user.id }).select("_id status");
+    if (existing) {
+      return res.status(400).json({ message: "You already booked this event" });
+    }
 
+    // ✅ capacity / sold out protection
+    const sold = Number(ev.ticketsSold || 0);
+    const cap = Number(ev.capacity || 0);
+    if (cap > 0 && sold >= cap) {
+      return res.status(400).json({ message: "Sold out" });
+    }
+
+    // ✅ create ticket first (need _id)
+    const ticketId = uuidv4(); // display/reference only
     const created = await Ticket.create({
       event: ev._id,
       user: req.user.id,
@@ -44,9 +136,26 @@ router.post("/book", protect, async (req, res) => {
       amount: ev.price || 0,
       currency: "INR",
       status: "unused",
-      qrBase64,
       paymentProvider: "test",
+      paymentRef: "",
+      qty: 1,
+      qrToken: "TEMP", // will set below
+      qrBase64: "",
     });
+
+    // ✅ secure token bound to ticket+event
+    const qrToken = signQrToken(created._id, ev._id);
+
+    // ✅ QR image encodes secure token
+    const qrBase64 = await QRCode.toDataURL(qrToken);
+
+    created.qrToken = qrToken;
+    created.qrBase64 = qrBase64;
+    await created.save();
+
+    // ✅ increment ticketsSold
+    ev.ticketsSold = sold + 1;
+    await ev.save();
 
     return res.status(201).json({ message: "Booked", ticket: created });
   } catch (err) {
@@ -60,9 +169,10 @@ router.post("/book", protect, async (req, res) => {
 router.get("/mine", protect, async (req, res) => {
   try {
     const list = await Ticket.find({ user: req.user.id })
-      .populate("event")
+      .populate("event", "title city category venue startAt bannerImage price")
       .sort({ createdAt: -1 })
-      .limit(200);
+      .limit(200)
+      .lean();
 
     return res.json(list);
   } catch (err) {
@@ -92,7 +202,82 @@ router.get("/:id", protect, async (req, res) => {
   }
 });
 
-// ✅ Admin validate (scan)
+/**
+ * ✅ Recommended Admin validate endpoint (SECURE)
+ * POST /api/tickets/validate  { code }
+ * - code should be the scanned qrToken (JWT string)
+ */
+router.post("/validate", protect, async (req, res) => {
+  try {
+    if (!isAdmin(req)) return res.status(403).json({ message: "Admin only" });
+
+    const code = String(req.body?.code || "").trim();
+    if (!code) return res.status(400).json({ message: "code required" });
+
+    const out = await validateQrTokenFlow({ code, adminUserId: req.user.id });
+    return res.status(out.status).json(out.body);
+  } catch (err) {
+    console.error("Validate error:", err);
+    return res.status(500).json({ message: "Server error (validate)" });
+  }
+});
+
+/**
+ * ✅ Backward compat endpoint
+ * POST /api/tickets/validate-by-code { code }
+ * Supports:
+ * - qrToken (secure) -> uses same secure flow
+ * - ticketId (legacy uuid) -> fallback
+ */
+router.post("/validate-by-code", protect, async (req, res) => {
+  try {
+    if (!isAdmin(req)) return res.status(403).json({ message: "Admin only" });
+
+    const code = String(req.body?.code || "").trim();
+    if (!code) return res.status(400).json({ message: "code required" });
+
+    // If it's a valid qrToken -> secure validate
+    try {
+      const payload = verifyQrToken(code);
+      if (payload?.tid) {
+        const out = await validateQrTokenFlow({ code, adminUserId: req.user.id });
+        return res.status(out.status).json(out.body);
+      }
+    } catch {
+      // not a jwt -> ignore and fallback below
+    }
+
+    // Legacy fallback: treat as old ticketId UUID
+    const t = await Ticket.findOne({ ticketId: code })
+      .populate("event")
+      .populate("user", "name email profilePicture");
+
+    if (!t) return res.status(404).json({ message: "Ticket not found" });
+
+    if (t.status === "validated") {
+      return res.status(409).json({
+        ok: false,
+        message: `Already Verified at ${t.scannedAt ? new Date(t.scannedAt).toLocaleString() : ""}`,
+        ticket: t,
+      });
+    }
+
+    const now = new Date();
+    t.status = "validated";
+    t.scannedAt = now;
+    t.scannedBy = req.user.id;
+    t.validatedAt = now;
+    t.validatedBy = req.user.id;
+    await t.save();
+
+    return res.json({ ok: true, message: "Verified ✅", ticket: t });
+  } catch (err) {
+    console.error("Validate-by-code error:", err);
+    return res.status(500).json({ message: "Server error (validate-by-code)" });
+  }
+});
+
+// ✅ Admin validate by Mongo _id (backward-compat)
 // POST /api/tickets/:id/validate
 router.post("/:id/validate", protect, async (req, res) => {
   try {
@@ -105,16 +290,19 @@ router.post("/:id/validate", protect, async (req, res) => {
     if (!t) return res.status(404).json({ message: "Ticket not found" });
 
     if (t.status === "validated") {
-      return res.json({
+      return res.status(409).json({
         ok: false,
         message: `Already Verified at ${t.scannedAt ? new Date(t.scannedAt).toLocaleString() : ""}`,
         ticket: t,
       });
     }
 
+    const now = new Date();
     t.status = "validated";
-    t.scannedAt = new Date();
+    t.scannedAt = now;
     t.scannedBy = req.user.id;
+    t.validatedAt = now;
+    t.validatedBy = req.user.id;
     await t.save();
 
     return res.json({ ok: true, message: "Verified ✅", ticket: t });

@@ -1,10 +1,8 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
 const API = process.env.REACT_APP_API_URL;
-
-const normCity = (s) => (s || "").trim();
 
 const parseCsv = (raw) =>
   String(raw || "")
@@ -61,9 +59,26 @@ export default function SubmitPlace() {
   const [urlImages, setUrlImages] = useState([]);
 
   const [uploading, setUploading] = useState(false);
-  const [uploadedUrls, setUploadedUrls] = useState([]); // /uploads/...
+  const [submitting, setSubmitting] = useState(false);
 
   const [msg, setMsg] = useState("");
+
+  // ✅ prevent blob-url memory leak
+  const previewMap = useRef(new Map());
+  useEffect(() => {
+    return () => {
+      previewMap.current.forEach((url) => URL.revokeObjectURL(url));
+      previewMap.current.clear();
+    };
+  }, []);
+
+  const previewUrlForLocal = (file) => {
+    const key = `${file.name}-${file.size}-${file.lastModified}`;
+    if (!previewMap.current.has(key)) {
+      previewMap.current.set(key, URL.createObjectURL(file));
+    }
+    return previewMap.current.get(key);
+  };
 
   const onPickFiles = (files) => {
     const list = Array.from(files || []).filter(Boolean);
@@ -72,14 +87,14 @@ export default function SubmitPlace() {
     setLocalFiles((prev) => {
       const next = [...prev];
       list.forEach((f) => {
-        const exists = next.some((x) => x.name === f.name && x.size === f.size);
+        const exists = next.some(
+          (x) => x.name === f.name && x.size === f.size && x.lastModified === f.lastModified
+        );
         if (!exists) next.push(f);
       });
       return next.slice(0, 8); // user limit 8
     });
   };
-
-  const previewUrlForLocal = (file) => URL.createObjectURL(file);
 
   const uploadLocalFiles = async () => {
     if (!localFiles.length) return [];
@@ -89,16 +104,13 @@ export default function SubmitPlace() {
       const fd = new FormData();
       localFiles.forEach((f) => fd.append("images", f));
 
+      // ✅ do NOT set Content-Type manually (axios sets boundary)
       const res = await axios.post(`${API}/api/upload/user-multi`, fd, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const urls = res.data?.urls || [];
-      setUploadedUrls(urls);
-      return urls;
+      return Array.isArray(urls) ? urls : [];
     } catch (err) {
       throw new Error(err?.response?.data?.message || "Upload failed");
     } finally {
@@ -109,14 +121,19 @@ export default function SubmitPlace() {
   const submitNow = async () => {
     setMsg("");
 
+    if (!token) return setMsg("❌ Please login first");
     if (!name.trim()) return setMsg("❌ Place name required");
     if (!city.trim()) return setMsg("❌ City required");
 
+    if (submitting) return;
+
+    setSubmitting(true);
     try {
       // upload local files first (if any)
       const up = await uploadLocalFiles();
 
-      const merged = [...(up || []), ...(uploadedUrls || []), ...(urlImages || [])]
+      // ✅ FIX: do not merge uploadedUrls again (up already contains them)
+      const merged = [...(up || []), ...(urlImages || [])]
         .map((x) => String(x || "").trim())
         .filter(Boolean);
 
@@ -129,16 +146,16 @@ export default function SubmitPlace() {
         `${API}/api/submissions`,
         {
           name: name.trim(),
-          city: normCity(city),
+          city: city.trim().toLowerCase(),
           category: category.trim(),
           address: address.trim(),
           location: location.trim(),
 
-          emoji,
-          vibe,
-          priceLevel,
-          bestTime,
-          instagrammable,
+          emoji: String(emoji || "✨").trim(),
+          vibe: String(vibe || "").trim(),
+          priceLevel: String(priceLevel || "").trim(),
+          bestTime: String(bestTime || "").trim(),
+          instagrammable: !!instagrammable,
 
           instagram: instagram.trim(),
           tags: parseCsv(tagsInput),
@@ -152,9 +169,35 @@ export default function SubmitPlace() {
       );
 
       alert("✅ Submitted for approval!");
+
+      // ✅ clear form
+      setLocalFiles([]);
+      setUrlInput("");
+      setUrlImages([]);
+
+      setName("");
+      setCity("");
+      setCategory("");
+      setAddress("");
+      setLocation("");
+
+      setEmoji("✨");
+      setVibe("Hidden Gems");
+      setPriceLevel("Signature");
+      setBestTime("Evening");
+      setInstagrammable(false);
+
+      setWhy("");
+      setHighlight("");
+      setInstagram("");
+      setTagsInput("");
+      setActivitiesInput("");
+
       navigate("/dashboard");
     } catch (err) {
       setMsg(err?.response?.data?.message || err?.message || "Submit failed");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -291,14 +334,7 @@ export default function SubmitPlace() {
         {/* Photos */}
         <hr style={{ margin: "16px 0" }} />
 
-        <div
-          style={{
-            border: "1px solid #e9e9e9",
-            borderRadius: 16,
-            padding: 12,
-            background: "#fafafa",
-          }}
-        >
+        <div style={{ border: "1px solid #e9e9e9", borderRadius: 16, padding: 12, background: "#fafafa" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <div>
               <div style={{ fontWeight: 900 }}>Photos (multiple)</div>
@@ -414,7 +450,7 @@ export default function SubmitPlace() {
             {uploading ? <span style={{ fontSize: 13, opacity: 0.8, alignSelf: "center" }}>Uploading...</span> : null}
           </div>
 
-          {(localFiles.length > 0 || urlImages.length > 0) ? (
+          {localFiles.length > 0 || urlImages.length > 0 ? (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontWeight: 900, marginBottom: 8 }}>
                 Preview ({localFiles.length + urlImages.length})
@@ -423,7 +459,7 @@ export default function SubmitPlace() {
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 {localFiles.map((f, idx) => (
                   <div
-                    key={`${f.name}-${f.size}-${idx}`}
+                    key={`${f.name}-${f.size}-${f.lastModified}-${idx}`}
                     style={{
                       width: 120,
                       borderRadius: 14,
@@ -543,20 +579,20 @@ export default function SubmitPlace() {
 
         <button
           onClick={submitNow}
-          disabled={uploading}
+          disabled={uploading || submitting}
           style={{
             width: "100%",
             marginTop: 14,
             padding: "12px 14px",
             borderRadius: 14,
             border: "1px solid #ddd",
-            background: uploading ? "#666" : "#111",
+            background: uploading || submitting ? "#666" : "#111",
             color: "#fff",
-            cursor: uploading ? "not-allowed" : "pointer",
+            cursor: uploading || submitting ? "not-allowed" : "pointer",
             fontWeight: 900,
           }}
         >
-          {uploading ? "Uploading..." : "Submit for Approval"}
+          {uploading ? "Uploading..." : submitting ? "Submitting..." : "Submit for Approval"}
         </button>
       </div>
     </div>

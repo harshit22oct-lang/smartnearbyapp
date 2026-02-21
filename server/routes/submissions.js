@@ -15,6 +15,8 @@ const toList = (v) =>
         .map((x) => x.trim())
         .filter(Boolean);
 
+const isAdmin = (req) => !!req.user?.isAdmin;
+
 // ✅ User submits a place (PENDING)
 // POST /api/submissions
 router.post("/", protect, async (req, res) => {
@@ -48,6 +50,20 @@ router.post("/", protect, async (req, res) => {
     if (!payload.name) return res.status(400).json({ message: "name is required" });
     if (!payload.city) return res.status(400).json({ message: "city is required" });
 
+    // ✅ prevent spam duplicates (same user, same city, same name, still pending)
+    const existing = await PendingPlace.findOne({
+      submittedBy: req.user.id,
+      city: payload.city,
+      name: payload.name,
+      status: "pending",
+    }).select("_id");
+
+    if (existing) {
+      return res
+        .status(400)
+        .json({ message: "You already submitted this place (pending)" });
+    }
+
     const created = await PendingPlace.create(payload);
     return res.status(201).json(created);
   } catch (err) {
@@ -57,10 +73,7 @@ router.post("/", protect, async (req, res) => {
 });
 
 /**
- * ==========================================================
- * ✅ IMPORTANT: KEEP THESE BEFORE "/" ROUTE
- * (so "/mine" doesn't get captured by "/:id")
- * ==========================================================
+ * ✅ KEEP THESE BEFORE "/:id"
  */
 
 // ✅ GET /api/submissions/mine (user)
@@ -68,7 +81,9 @@ router.get("/mine", protect, async (req, res) => {
   try {
     const list = await PendingPlace.find({ submittedBy: req.user.id })
       .sort({ createdAt: -1 })
-      .limit(200);
+      .limit(200)
+      .lean();
+
     return res.json(list);
   } catch (e) {
     console.error("Load my submissions error:", e);
@@ -76,12 +91,32 @@ router.get("/mine", protect, async (req, res) => {
   }
 });
 
+// ✅ Admin: list submissions by status
+// GET /api/submissions?status=pending
+router.get("/", protect, async (req, res) => {
+  try {
+    if (!isAdmin(req)) return res.status(403).json({ message: "Admin only" });
+
+    const status = String(req.query.status || "pending").trim();
+
+    const list = await PendingPlace.find({ status })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+
+    return res.json(list);
+  } catch (err) {
+    console.error("List submissions error:", err);
+    return res.status(500).json({ message: "Server error (list submissions)" });
+  }
+});
+
 // ✅ Admin: GET /api/submissions/:id (view full pending details)
 router.get("/:id", protect, async (req, res) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ message: "Admin only" });
+    if (!isAdmin(req)) return res.status(403).json({ message: "Admin only" });
 
-    const s = await PendingPlace.findById(req.params.id);
+    const s = await PendingPlace.findById(req.params.id).lean();
     if (!s) return res.status(404).json({ message: "Submission not found" });
 
     return res.json(s);
@@ -94,12 +129,22 @@ router.get("/:id", protect, async (req, res) => {
 // ✅ Admin: PUT /api/submissions/:id (edit pending before approve)
 router.put("/:id", protect, async (req, res) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ message: "Admin only" });
+    if (!isAdmin(req)) return res.status(403).json({ message: "Admin only" });
 
     const s = await PendingPlace.findById(req.params.id);
     if (!s) return res.status(404).json({ message: "Submission not found" });
 
-    // ✅ match EXACT PendingPlace schema fields
+    // ✅ status rules
+    if (req.body?.status !== undefined) {
+      const st = String(req.body.status || "").trim();
+      if (st === "approved") {
+        return res.status(400).json({ message: "Use /approve endpoint to approve" });
+      }
+      // allow only pending/rejected here
+      if (["pending", "rejected"].includes(st)) s.status = st;
+    }
+
+    // ✅ editable fields
     const allow = [
       "name",
       "city",
@@ -117,14 +162,13 @@ router.put("/:id", protect, async (req, res) => {
       "activities",
       "highlight",
       "why",
-      "status", // optional (admin can set pending/rejected manually)
     ];
 
     allow.forEach((k) => {
       if (req.body?.[k] !== undefined) s[k] = req.body[k];
     });
 
-    // ✅ normalize some fields if admin sends strings
+    // ✅ normalize fields
     if (req.body?.city !== undefined) s.city = normCity(req.body.city);
     if (req.body?.tags !== undefined) s.tags = toList(req.body.tags);
     if (req.body?.activities !== undefined) s.activities = toList(req.body.activities);
@@ -138,32 +182,17 @@ router.put("/:id", protect, async (req, res) => {
   }
 });
 
-// ✅ Admin: list submissions by status
-// GET /api/submissions?status=pending
-router.get("/", protect, async (req, res) => {
-  try {
-    if (!req.user?.isAdmin) return res.status(403).json({ message: "Admin only" });
-
-    const status = String(req.query.status || "pending");
-    const list = await PendingPlace.find({ status }).sort({ createdAt: -1 }).limit(100);
-    return res.json(list);
-  } catch (err) {
-    console.error("List submissions error:", err);
-    return res.status(500).json({ message: "Server error (list submissions)" });
-  }
-});
-
 // ✅ Admin: approve -> create Business curated place
 // POST /api/submissions/:id/approve
 router.post("/:id/approve", protect, async (req, res) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ message: "Admin only" });
+    if (!isAdmin(req)) return res.status(403).json({ message: "Admin only" });
 
     const sub = await PendingPlace.findById(req.params.id);
     if (!sub) return res.status(404).json({ message: "Submission not found" });
     if (sub.status !== "pending") return res.status(400).json({ message: "Already processed" });
 
-    const images = Array.isArray(sub.images) ? sub.images : [];
+    const images = Array.isArray(sub.images) ? sub.images.filter(Boolean) : [];
     const firstImage = images[0] || "";
 
     const business = await Business.create({
@@ -176,26 +205,21 @@ router.post("/:id/approve", protect, async (req, res) => {
       address: sub.address,
       location: sub.location,
 
-      // PendingPlace has no rating, keep null
       rating: null,
 
-      // ✅ old single image fields (compat)
       imageUrl: firstImage,
       photoRef: "",
 
-      // ✅ new multi-images
       images,
 
-      // not available from PendingPlace
       placeId: "",
 
-      // ✅ instagram supported in Business (Option A)
       instagram: sub.instagram || "",
 
       tags: sub.tags || [],
       activities: sub.activities || [],
-      highlight: sub.highlight,
-      why: sub.why,
+      highlight: sub.highlight || "",
+      why: sub.why || "",
 
       emoji: sub.emoji || "✨",
       vibe: sub.vibe || "",
@@ -207,6 +231,8 @@ router.post("/:id/approve", protect, async (req, res) => {
     });
 
     sub.status = "approved";
+    sub.reviewedBy = req.user.id;
+    sub.reviewedAt = new Date();
     await sub.save();
 
     return res.json({ message: "Approved", business });
@@ -217,15 +243,18 @@ router.post("/:id/approve", protect, async (req, res) => {
 });
 
 // ✅ Admin: reject
-// POST /api/submissions/:id/reject
+// POST /api/submissions/:id/reject   { reason? }
 router.post("/:id/reject", protect, async (req, res) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ message: "Admin only" });
+    if (!isAdmin(req)) return res.status(403).json({ message: "Admin only" });
 
     const sub = await PendingPlace.findById(req.params.id);
     if (!sub) return res.status(404).json({ message: "Submission not found" });
 
     sub.status = "rejected";
+    sub.reviewedBy = req.user.id;
+    sub.reviewedAt = new Date();
+    sub.rejectionReason = String(req.body?.reason || "").trim();
     await sub.save();
 
     return res.json({ message: "Rejected" });

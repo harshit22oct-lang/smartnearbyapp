@@ -12,11 +12,13 @@ import SubmitPlace from "./pages/SubmitPlace";
 import Orders from "./pages/Orders";
 import TicketView from "./pages/TicketView";
 
+// ✅ Admin QR Scanner page
+import AdminScanTicket from "./pages/AdminScanTicket";
+
 function App() {
   return (
     <Router>
       <Routes>
-
         {/* Default route */}
         <Route path="/" element={<Navigate to="/login" />} />
 
@@ -53,7 +55,7 @@ function App() {
           }
         />
 
-        {/* ✅ NEW: Orders page */}
+        {/* ✅ Orders page */}
         <Route
           path="/orders"
           element={
@@ -63,7 +65,7 @@ function App() {
           }
         />
 
-        {/* ✅ NEW: Ticket view page */}
+        {/* ✅ Ticket view page */}
         <Route
           path="/ticket/:id"
           element={
@@ -73,9 +75,18 @@ function App() {
           }
         />
 
+        {/* ✅ Admin: Scan ticket QR */}
+        <Route
+          path="/admin/scan-ticket"
+          element={
+            <ProtectedRoute>
+              <AdminScanTicket />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" />} />
-
       </Routes>
     </Router>
   );
