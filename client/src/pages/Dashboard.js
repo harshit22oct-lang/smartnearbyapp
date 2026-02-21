@@ -111,8 +111,14 @@ const Dashboard = () => {
           ((cityValue || "").toLowerCase() || "").trim()
         )}` + (qValue ? `&q=${encodeURIComponent(qValue)}` : "");
 
-      const res = await axios.get(url);
-      setEvents(Array.isArray(data) ? data : []);
+      const response = await axios.get(url);
+      const data = response.data;
+      if (Array.isArray(data)) {
+        setEvents(data);
+      }else {
+        setEvents([]);
+      }
+      
     } catch (err) {
       setEvents([]);
       setEventsMsg(err?.response?.data?.message || "Events load failed");
