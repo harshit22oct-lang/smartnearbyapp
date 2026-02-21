@@ -782,7 +782,7 @@ const Dashboard = () => {
         alert(err?.response?.data?.message || "Booking failed");
       }
     },
-    [navigate, token, API]
+    [navigate, token]
   );
 
   // Navigation helpers
