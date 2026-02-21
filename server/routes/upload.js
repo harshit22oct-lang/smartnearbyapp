@@ -104,4 +104,30 @@ router.post("/user-multi", protect, (req, res) => {
   });
 });
 
+// ✅ Step 2 — Create Profile Upload API
+// ✅ POST /api/upload/profile
+router.post("/profile", protect, (req, res) => {
+  upload.single("image")(req, res, async (err) => {
+    try {
+      if (err) {
+        const msg = err.code === "LIMIT_FILE_SIZE" ? "File must be <= 8MB" : err.message || "Upload failed";
+        return res.status(400).json({ message: msg });
+      }
+
+      if (!req.file?.filename) {
+        return res.status(400).json({ message: "No image uploaded" });
+      }
+
+      const url = `/uploads/${req.file.filename}`;
+
+      req.user.profilePicture = url;
+      await req.user.save();
+
+      return res.json({ url });
+    } catch (e) {
+      return res.status(500).json({ message: "Profile upload failed" });
+    }
+  });
+});
+
 module.exports = router;

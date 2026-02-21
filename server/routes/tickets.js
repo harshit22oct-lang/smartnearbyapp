@@ -25,6 +25,15 @@ router.post("/book", protect, async (req, res) => {
       return res.status(400).json({ message: "Tickets not available for this event" });
     }
 
+    // ✅ Step 3 — Block booking if no profile picture
+    // profile picture check
+    if (!req.user?.profilePicture) {
+      return res.status(400).json({
+        code: "PROFILE_REQUIRED",
+        message: "Please upload profile picture before booking",
+      });
+    }
+
     const ticketId = uuidv4();
     const qrBase64 = await QRCode.toDataURL(ticketId); // png base64
 
