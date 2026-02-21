@@ -98,7 +98,7 @@ const Dashboard = () => {
   const [activitiesInput, setActivitiesInput] = useState("");
   const [instagrammable, setInstagrammable] = useState(false);
 
-  // Multi photos
+  // Multi photos (admin curate)
   const fileInputRef = useRef(null);
   const [localFiles, setLocalFiles] = useState([]);
   const [urlInput, setUrlInput] = useState("");
@@ -110,6 +110,14 @@ const Dashboard = () => {
   const [importRow, setImportRow] = useState(2);
   const [importBusy, setImportBusy] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+
+  // ✅ Step 6: Profile upload UI states
+  const profileInputRef = useRef(null);
+  const [profileFile, setProfileFile] = useState(null);
+  const [profilePreview, setProfilePreview] = useState("");
+  const [profileDragging, setProfileDragging] = useState(false);
+  const [profileUploading, setProfileUploading] = useState(false);
+  const [profileMsg, setProfileMsg] = useState("");
 
   // ----------------
   // Helpers
@@ -148,27 +156,30 @@ const Dashboard = () => {
     return `${k} ${c}`;
   }, []);
 
-  const googleImg = useCallback(
-    (ref) => {
-      if (!ref) return "";
-      return `${API}/api/google/photo?photoRef=${encodeURIComponent(ref)}`;
+  const googleImg = useCallback((ref) => {
+    if (!ref) return "";
+    return `${API}/api/google/photo?photoRef=${encodeURIComponent(ref)}`;
+  }, []);
+
+  const resolveUploadUrl = useCallback(
+    (u) => {
+      const s = String(u || "").trim();
+      if (!s) return "";
+      if (s.startsWith("/uploads/")) return `${API}${s}`;
+      return s;
     },
-    []
+    [API]
   );
 
   const mongoImg = useCallback(
     (b) => {
       const imgs = Array.isArray(b?.images) ? b.images.filter(Boolean) : [];
-      if (imgs.length > 0) {
-        const u = imgs[0];
-        if (String(u).startsWith("/uploads/")) return `${API}${u}`;
-        return u;
-      }
+      if (imgs.length > 0) return resolveUploadUrl(imgs[0]);
       if (b?.photoRef) return googleImg(b.photoRef);
       if (b?.imageUrl) return b.imageUrl;
       return "";
     },
-    [googleImg]
+    [googleImg, resolveUploadUrl]
   );
 
   const chip = useCallback((text) => {
@@ -191,6 +202,11 @@ const Dashboard = () => {
       </span>
     );
   }, []);
+
+  const profilePhotoUrl = useMemo(() => {
+    const u = user?.profilePicture || "";
+    return resolveUploadUrl(u);
+  }, [resolveUploadUrl, user?.profilePicture]);
 
   // ----------------
   // ✅ Save / Restore state
@@ -243,7 +259,6 @@ const Dashboard = () => {
   const fetchProfile = useCallback(async () => {
     if (!API) return;
     if (!authHeader) {
-      // No token => go login
       localStorage.removeItem("token");
       if (isBrowser) window.location.href = "/login";
       return;
@@ -255,7 +270,7 @@ const Dashboard = () => {
       localStorage.removeItem("token");
       if (isBrowser) window.location.href = "/login";
     }
-  }, [authHeader, isBrowser]);
+  }, [API, authHeader, isBrowser]);
 
   const fetchFavorites = useCallback(async () => {
     if (!API) return;
@@ -276,7 +291,7 @@ const Dashboard = () => {
       setFavIds([]);
       setFavPlaceIds([]);
     }
-  }, [authHeader]);
+  }, [API, authHeader]);
 
   const fetchPendingSubmissions = useCallback(async () => {
     if (!API || !authHeader) return;
@@ -291,7 +306,7 @@ const Dashboard = () => {
     } finally {
       setPendingBusy(false);
     }
-  }, [authHeader]);
+  }, [API, authHeader]);
 
   const fetchEvents = useCallback(
     async (cityValue, qValue) => {
@@ -312,8 +327,83 @@ const Dashboard = () => {
         setEventsBusy(false);
       }
     },
-    []
+    [API]
   );
+
+  // ----------------
+  // ✅ Step 6: Profile upload handlers
+  // ----------------
+  const pickProfileFile = useCallback((f) => {
+    if (!f) return;
+    if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(f.type || "")) {
+      setProfileMsg("Only image files allowed (jpg, png, webp, gif)");
+      return;
+    }
+    if (f.size > 8 * 1024 * 1024) {
+      setProfileMsg("Image must be <= 8MB");
+      return;
+    }
+
+    setProfileMsg("");
+    setProfileFile(f);
+
+    const prev = URL.createObjectURL(f);
+    setProfilePreview(prev);
+  }, []);
+
+  const clearProfilePick = useCallback(() => {
+    try {
+      if (profilePreview) URL.revokeObjectURL(profilePreview);
+    } catch {}
+    setProfilePreview("");
+    setProfileFile(null);
+    setProfileMsg("");
+  }, [profilePreview]);
+
+  const uploadProfileNow = useCallback(async () => {
+    if (!API) {
+      setProfileMsg("API missing. Set REACT_APP_API_URL in Vercel.");
+      return;
+    }
+    if (!token) {
+      alert("Please login first");
+      navigate("/login");
+      return;
+    }
+    if (!profileFile) {
+      setProfileMsg("Choose an image first");
+      return;
+    }
+
+    setProfileUploading(true);
+    setProfileMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("image", profileFile);
+
+      const res = await axios.post(`${API}/api/upload/profile`, fd, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      const url = res.data?.url || "";
+      if (!url) {
+        setProfileMsg("Upload done but url not returned.");
+        return;
+      }
+
+      // update local UI immediately
+      setUser((prev) => ({ ...(prev || {}), profilePicture: url }));
+      setProfileMsg("✅ Profile photo updated");
+      clearProfilePick();
+    } catch (err) {
+      setProfileMsg(err?.response?.data?.message || "Profile upload failed");
+    } finally {
+      setProfileUploading(false);
+    }
+  }, [API, clearProfilePick, navigate, profileFile, token]);
 
   // ----------------
   // Search
@@ -352,7 +442,6 @@ const Dashboard = () => {
       const keywordSafe = keyword || "";
       setQ(keywordSafe);
 
-      // Mongo curated
       try {
         const mongoRes = await axios.get(
           `${API}/api/search?city=${encodeURIComponent(normalizeCity(cityToUse))}&q=${encodeURIComponent(
@@ -365,7 +454,6 @@ const Dashboard = () => {
         setMsg(err?.response?.data?.message || "MongoDB search failed");
       }
 
-      // Google
       try {
         const gq = buildGoogleQuery(keywordSafe, cityToUse);
         const googleRes = await axios.get(`${API}/api/google?q=${encodeURIComponent(gq)}`, authHeader);
@@ -374,13 +462,13 @@ const Dashboard = () => {
         setMsg((prev) => prev || err?.response?.data?.message || "Google search failed");
       }
 
-      // Save after search
       setTimeout(() => {
         saveDashState({ selectedCity: cityToUse, q: keywordSafe, scrollY: 0 });
         if (isBrowser) window.scrollTo(0, 0);
       }, 0);
     },
     [
+      API,
       authHeader,
       buildGoogleQuery,
       detectCityFromQuery,
@@ -410,9 +498,7 @@ const Dashboard = () => {
   const findFavoriteBusinessByPlaceId = useCallback(
     (placeId) => {
       if (!placeId) return null;
-      return (
-        (favList || []).find((b) => (b.placeId || "").trim() === (placeId || "").trim()) || null
-      );
+      return (favList || []).find((b) => (b.placeId || "").trim() === (placeId || "").trim()) || null;
     },
     [favList]
   );
@@ -429,7 +515,7 @@ const Dashboard = () => {
         setMsg(err?.response?.data?.message || "Favorite update failed");
       }
     },
-    [authHeader, fetchFavorites, saveDashState]
+    [API, authHeader, fetchFavorites, saveDashState]
   );
 
   const deleteCurated = useCallback(
@@ -446,7 +532,7 @@ const Dashboard = () => {
         setMsg(err?.response?.data?.message || "Delete failed");
       }
     },
-    [authHeader, fetchFavorites, saveDashState]
+    [API, authHeader, fetchFavorites, saveDashState]
   );
 
   const importGooglePlace = useCallback(
@@ -465,7 +551,7 @@ const Dashboard = () => {
       );
       return res.data?.business || res.data;
     },
-    [authHeader, normalizeCity, selectedCity]
+    [API, authHeader, normalizeCity, selectedCity]
   );
 
   const toggleGoogleSave = useCallback(
@@ -504,6 +590,7 @@ const Dashboard = () => {
       }
     },
     [
+      API,
       authHeader,
       fetchFavorites,
       findFavoriteBusinessByPlaceId,
@@ -551,7 +638,7 @@ const Dashboard = () => {
       const formData = new FormData();
       localFiles.forEach((f) => formData.append("images", f));
 
-      // NOTE: keep your existing endpoint:
+      // NOTE: keep your existing endpoint (admin upload)
       const res = await axios.post(`${API}/api/upload`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -565,7 +652,7 @@ const Dashboard = () => {
     } finally {
       setUploading(false);
     }
-  }, [localFiles, token]);
+  }, [API, localFiles, token]);
 
   const addBusiness = useCallback(
     async (e) => {
@@ -581,11 +668,7 @@ const Dashboard = () => {
       try {
         const uploadedUrls = await uploadLocalFiles();
 
-        const merged = [
-          ...uploadedUrls,
-          ...(urlImages || []),
-          ...(imageUrl ? [imageUrl.trim()] : []),
-        ]
+        const merged = [...uploadedUrls, ...(urlImages || []), ...(imageUrl ? [imageUrl.trim()] : [])]
           .map((x) => String(x || "").trim())
           .filter(Boolean);
 
@@ -629,7 +712,6 @@ const Dashboard = () => {
         setMsg("✅ Curated place added!");
         setResults((prev) => [res.data, ...prev]);
 
-        // reset form
         setName("");
         setCategory("");
         setAddress("");
@@ -656,6 +738,7 @@ const Dashboard = () => {
       }
     },
     [
+      API,
       activitiesInput,
       address,
       authHeader,
@@ -699,7 +782,7 @@ const Dashboard = () => {
         setPendingMsg(err?.response?.data?.message || "Approve failed");
       }
     },
-    [authHeader, q, searchNow, selectedCity]
+    [API, authHeader, q, searchNow, selectedCity]
   );
 
   const rejectSubmission = useCallback(
@@ -714,7 +797,7 @@ const Dashboard = () => {
         setPendingMsg(err?.response?.data?.message || "Reject failed");
       }
     },
-    [authHeader]
+    [API, authHeader]
   );
 
   // Admin: sheet import
@@ -758,9 +841,9 @@ const Dashboard = () => {
     } finally {
       setImportBusy(false);
     }
-  }, [authHeader, importRow, importSheetId]);
+  }, [API, authHeader, importRow, importSheetId]);
 
-  // Ticket booking
+  // ✅ Step 5: Ticket booking (PROFILE_REQUIRED handling)
   const bookTicket = useCallback(
     async (eventId) => {
       try {
@@ -779,10 +862,15 @@ const Dashboard = () => {
         alert("✅ Booked! Ticket added to Orders.");
         navigate("/orders");
       } catch (err) {
-        alert(err?.response?.data?.message || "Booking failed");
+        if (err?.response?.data?.code === "PROFILE_REQUIRED") {
+          alert("Please upload profile picture first");
+          navigate("/dashboard");
+        } else {
+          alert(err?.response?.data?.message || "Booking failed");
+        }
       }
     },
-    [navigate, token]
+    [API, navigate, token]
   );
 
   // Navigation helpers
@@ -806,16 +894,20 @@ const Dashboard = () => {
     () => [
       {
         label: "Romantic 👀💕",
-        keywords: ["romantic restaurant", "rooftop dining", "couple cafe", "fine dining", "sunset point", "candle light dinner"],
+        keywords: [
+          "romantic restaurant",
+          "rooftop dining",
+          "couple cafe",
+          "fine dining",
+          "sunset point",
+          "candle light dinner",
+        ],
       },
       {
         label: "Cozy ☕🍂",
         keywords: ["cozy places", "coffee shop", "book cafe", "quiet restaurant", "tea house", "art cafe", "bakery"],
       },
-      {
-        label: "Alone 🌙",
-        keywords: ["quiet place", "study cafe", "library", "peaceful park", "work cafe", "reading cafe"],
-      },
+      { label: "Alone 🌙", keywords: ["quiet place", "study cafe", "library", "peaceful park", "work cafe", "reading cafe"] },
       { label: "Nature ⛰️🍃", keywords: ["park", "lake view", "garden", "nature spot", "sunset point"] },
       { label: "Budget 💸", keywords: ["cheap food", "budget cafe", "street food", "affordable restaurant", "thali"] },
       { label: "Date Night 🍽️", keywords: ["fine dining", "romantic dinner", "rooftop restaurant", "candle light dinner", "live music restaurant"] },
@@ -824,7 +916,7 @@ const Dashboard = () => {
   );
 
   // ----------------
-  // Effects (NO eslint warnings)
+  // Effects
   // ----------------
   useEffect(() => {
     restoreDashState();
@@ -895,7 +987,7 @@ const Dashboard = () => {
         }}
       >
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div>
             <h2 style={{ margin: 0 }}>MoodNest</h2>
             {user ? (
@@ -957,6 +1049,195 @@ const Dashboard = () => {
         </div>
 
         {msg ? <p style={{ marginTop: 10 }}>{msg}</p> : null}
+
+        {/* ✅ Step 6: Profile Upload Card */}
+        <div
+          style={{
+            marginTop: 14,
+            border: "1px solid #eee",
+            background: "#fbfbff",
+            borderRadius: 16,
+            padding: 14,
+            display: "flex",
+            gap: 14,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          {/* Avatar */}
+          <div
+            style={{
+              width: 78,
+              height: 78,
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: "2px solid #111",
+              background: profilePhotoUrl
+                ? `url(${profilePhotoUrl}) center/cover no-repeat`
+                : "linear-gradient(135deg,#111,#444)",
+              flex: "0 0 auto",
+            }}
+            title={profilePhotoUrl ? "Profile photo" : "No profile photo"}
+          />
+
+          <div style={{ flex: "1 1 340px", minWidth: 260 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 900, fontSize: 14 }}>👤 Profile Photo</div>
+              {!user?.profilePicture ? (
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 900,
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    border: "1px solid #ffd3d3",
+                    background: "#fff1f1",
+                  }}
+                >
+                  Required for booking 🎟️
+                </span>
+              ) : (
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 900,
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    border: "1px solid #d7f0d7",
+                    background: "#f3fff3",
+                  }}
+                >
+                  Verified ✅
+                </span>
+              )}
+            </div>
+
+            {/* Dropzone */}
+            <div
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setProfileDragging(true);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setProfileDragging(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setProfileDragging(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setProfileDragging(false);
+                const f = e.dataTransfer?.files?.[0];
+                pickProfileFile(f);
+              }}
+              style={{
+                marginTop: 10,
+                border: `1px dashed ${profileDragging ? "#111" : "#cfcfcf"}`,
+                background: profileDragging ? "#fff" : "#ffffff",
+                borderRadius: 14,
+                padding: 12,
+                textAlign: "center",
+                fontSize: 13,
+                opacity: 0.95,
+              }}
+            >
+              Drag & drop profile photo here
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => profileInputRef.current?.click()}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #ddd",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  Choose Photo
+                </button>
+
+                <button
+                  type="button"
+                  onClick={uploadProfileNow}
+                  disabled={profileUploading || !profileFile}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #ddd",
+                    background: profileUploading || !profileFile ? "#777" : "#111",
+                    color: "#fff",
+                    cursor: profileUploading || !profileFile ? "not-allowed" : "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  {profileUploading ? "Uploading..." : "Upload"}
+                </button>
+
+                {profileFile ? (
+                  <button
+                    type="button"
+                    onClick={clearProfilePick}
+                    style={{
+                      padding: "9px 12px",
+                      borderRadius: 12,
+                      border: "1px solid #ddd",
+                      background: "#fff",
+                      cursor: "pointer",
+                      fontWeight: 900,
+                    }}
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+
+              <input
+                ref={profileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  pickProfileFile(f);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
+            {/* Preview */}
+            {profilePreview ? (
+              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    width: 54,
+                    height: 54,
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    border: "1px solid #eee",
+                    background: `url(${profilePreview}) center/cover no-repeat`,
+                  }}
+                />
+                <div style={{ fontSize: 12.5, opacity: 0.85 }}>
+                  Preview ready. Click <b>Upload</b> to save.
+                </div>
+              </div>
+            ) : null}
+
+            {profileMsg ? (
+              <div style={{ marginTop: 10, fontSize: 13, fontWeight: 800, opacity: 0.9 }}>
+                {profileMsg}
+              </div>
+            ) : null}
+          </div>
+        </div>
 
         <hr style={{ margin: "16px 0" }} />
 
@@ -1233,7 +1514,11 @@ const Dashboard = () => {
                 const ratingText = b.rating ? `⭐ ${b.rating}` : "";
                 const badge = `${b.emoji || "✨"} ${b.vibe || "Recommended"}`;
 
-                const topInfo = [b.priceLevel ? `💸 ${b.priceLevel}` : "", b.bestTime ? `⏰ ${b.bestTime}` : "", b.instagrammable ? "📸 Instagram" : ""]
+                const topInfo = [
+                  b.priceLevel ? `💸 ${b.priceLevel}` : "",
+                  b.bestTime ? `⏰ ${b.bestTime}` : "",
+                  b.instagrammable ? "📸 Instagram" : "",
+                ]
                   .filter(Boolean)
                   .join("  •  ");
 
@@ -1365,7 +1650,7 @@ const Dashboard = () => {
               <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 {pendingSubs.map((s) => {
                   const img = (Array.isArray(s.images) && s.images[0]) || "";
-                  const imgFull = img ? (img.startsWith("/uploads/") ? `${API}${img}` : img) : "";
+                  const imgFull = img ? resolveUploadUrl(img) : "";
 
                   return (
                     <div
@@ -1804,13 +2089,17 @@ const Dashboard = () => {
                       Clear URLs
                     </button>
 
-                    {uploading ? <span style={{ fontSize: 13, opacity: 0.8, alignSelf: "center" }}>Uploading...</span> : null}
+                    {uploading ? (
+                      <span style={{ fontSize: 13, opacity: 0.8, alignSelf: "center" }}>Uploading...</span>
+                    ) : null}
                   </div>
                 </div>
 
                 {(localFiles.length > 0 || urlImages.length > 0) ? (
                   <div style={{ marginTop: 12 }}>
-                    <div style={{ fontWeight: 800, marginBottom: 8 }}>Preview ({localFiles.length + urlImages.length})</div>
+                    <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                      Preview ({localFiles.length + urlImages.length})
+                    </div>
 
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       {localFiles.map((f, idx) => (
@@ -1861,7 +2150,7 @@ const Dashboard = () => {
                         >
                           <img
                             alt="url"
-                            src={u.startsWith("/uploads/") ? `${API}${u}` : u}
+                            src={resolveUploadUrl(u)}
                             style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }}
                             onError={(e) => {
                               e.currentTarget.style.display = "none";
@@ -1887,7 +2176,9 @@ const Dashboard = () => {
                       ))}
                     </div>
 
-                    <p style={{ marginTop: 10, fontSize: 12.5, opacity: 0.75 }}>Local images will upload when you submit the form.</p>
+                    <p style={{ marginTop: 10, fontSize: 12.5, opacity: 0.75 }}>
+                      Local images will upload when you submit the form.
+                    </p>
                   </div>
                 ) : null}
               </div>
@@ -1978,7 +2269,11 @@ const Dashboard = () => {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <input type="checkbox" checked={instagrammable} onChange={(e) => setInstagrammable(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={instagrammable}
+                  onChange={(e) => setInstagrammable(e.target.checked)}
+                />
                 <span style={{ fontSize: 14 }}>📸 Instagrammable</span>
               </div>
 
@@ -2011,7 +2306,9 @@ const Dashboard = () => {
                 {uploading ? "Uploading..." : "Add Curated Place"}
               </button>
 
-              <p style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>Tip: Add photos using file upload or multiple URLs.</p>
+              <p style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
+                Tip: Add photos using file upload or multiple URLs.
+              </p>
             </form>
           </>
         ) : null}
