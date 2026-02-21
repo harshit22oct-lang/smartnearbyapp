@@ -27,6 +27,13 @@ router.post("/", protect, async (req, res) => {
       category: String(body.category || "").trim(),
       address: String(body.address || "").trim(),
 
+      location: String(body.location || "").trim(),
+      emoji: String(body.emoji || "✨").trim(),
+      vibe: String(body.vibe || "").trim(),
+      priceLevel: String(body.priceLevel || "").trim(),
+      bestTime: String(body.bestTime || "").trim(),
+      instagrammable: !!body.instagrammable,
+
       images: toList(body.images),
       instagram: String(body.instagram || "").trim(),
       tags: toList(body.tags),
@@ -82,14 +89,21 @@ router.post("/:id/approve", protect, async (req, res) => {
       name: sub.name,
       category: sub.category,
       address: sub.address,
+      location: sub.location,
 
       images: sub.images || [],
-
       instagram: sub.instagram,
+
       tags: sub.tags || [],
       activities: sub.activities || [],
       highlight: sub.highlight,
       why: sub.why,
+
+      emoji: sub.emoji || "✨",
+      vibe: sub.vibe || "",
+      priceLevel: sub.priceLevel || "",
+      bestTime: sub.bestTime || "",
+      instagrammable: !!sub.instagrammable,
 
       createdBy: req.user?.id || null,
     });

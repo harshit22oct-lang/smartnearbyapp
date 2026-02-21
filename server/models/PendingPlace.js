@@ -7,18 +7,22 @@ const PendingPlaceSchema = new mongoose.Schema(
     category: { type: String, trim: true, default: "" },
     address: { type: String, trim: true, default: "" },
 
-    images: { type: [String], default: [] }, // /uploads/...
+    // ✅ admin-like fields
+    location: { type: String, trim: true, default: "" },
+    emoji: { type: String, trim: true, default: "✨" },
+    vibe: { type: String, trim: true, default: "" },
+    priceLevel: { type: String, trim: true, default: "" },
+    bestTime: { type: String, trim: true, default: "" },
+    instagrammable: { type: Boolean, default: false },
+
+    images: { type: [String], default: [] }, // /uploads/... or https...
     instagram: { type: String, trim: true, default: "" },
     tags: { type: [String], default: [] },
     activities: { type: [String], default: [] },
     highlight: { type: String, trim: true, default: "" },
     why: { type: String, trim: true, default: "" },
 
-    status: {
-      type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
-    },
+    status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
 
     submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   },

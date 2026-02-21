@@ -1,238 +1,564 @@
-import React, { useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
 const API = process.env.REACT_APP_API_URL;
 
+const normCity = (s) => (s || "").trim();
+
+const parseCsv = (raw) =>
+  String(raw || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+const parseUrls = (raw) => {
+  const txt = String(raw || "");
+  const parts = txt
+    .split(/[\n,]+/g)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const urls = parts.filter((u) => /^https?:\/\/.+/i.test(u) || u.startsWith("/uploads/"));
+  return Array.from(new Set(urls));
+};
+
 export default function SubmitPlace() {
   const navigate = useNavigate();
-
   const token = localStorage.getItem("token");
 
+  const authHeader = useMemo(
+    () => ({
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+    [token]
+  );
+
+  // basic
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
   const [category, setCategory] = useState("");
   const [address, setAddress] = useState("");
+  const [location, setLocation] = useState("");
 
-  const [imageFile, setImageFile] = useState(null);
-  const [imageUrl, setImageUrl] = useState("");
+  // admin-like
+  const [emoji, setEmoji] = useState("✨");
+  const [vibe, setVibe] = useState("Hidden Gems");
+  const [priceLevel, setPriceLevel] = useState("Signature");
+  const [bestTime, setBestTime] = useState("Evening");
+  const [instagrammable, setInstagrammable] = useState(false);
+
+  const [why, setWhy] = useState("");
+  const [highlight, setHighlight] = useState("");
+  const [instagram, setInstagram] = useState("");
+  const [tagsInput, setTagsInput] = useState("");
+  const [activitiesInput, setActivitiesInput] = useState("");
+
+  // photos
+  const fileInputRef = useRef(null);
+  const [localFiles, setLocalFiles] = useState([]);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlImages, setUrlImages] = useState([]);
+
+  const [uploading, setUploading] = useState(false);
+  const [uploadedUrls, setUploadedUrls] = useState([]); // /uploads/...
 
   const [msg, setMsg] = useState("");
-  const [busy, setBusy] = useState(false);
 
-  // ✅ Upload image
-  const handleUpload = async () => {
-    if (!imageFile) return alert("Choose image first");
+  const onPickFiles = (files) => {
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) return;
 
+    setLocalFiles((prev) => {
+      const next = [...prev];
+      list.forEach((f) => {
+        const exists = next.some((x) => x.name === f.name && x.size === f.size);
+        if (!exists) next.push(f);
+      });
+      return next.slice(0, 8); // user limit 8
+    });
+  };
+
+  const previewUrlForLocal = (file) => URL.createObjectURL(file);
+
+  const uploadLocalFiles = async () => {
+    if (!localFiles.length) return [];
+
+    setUploading(true);
     try {
-      setBusy(true);
-
       const fd = new FormData();
-      fd.append("image", imageFile);
+      localFiles.forEach((f) => fd.append("images", f));
 
-      const res = await axios.post(
-        `${API}/api/upload/user`,
-        fd,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      const res = await axios.post(`${API}/api/upload/user-multi`, fd, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
-      setImageUrl(res.data.url);
-
-      setMsg("✅ Image uploaded");
-
+      const urls = res.data?.urls || [];
+      setUploadedUrls(urls);
+      return urls;
     } catch (err) {
-
-      setMsg(err?.response?.data?.message || "Upload failed");
-
+      throw new Error(err?.response?.data?.message || "Upload failed");
     } finally {
-
-      setBusy(false);
-
+      setUploading(false);
     }
   };
 
-  // ✅ Submit place
-  const handleSubmit = async () => {
+  const submitNow = async () => {
+    setMsg("");
 
-    if (!name || !city)
-      return alert("Name and City required");
-
-    if (!imageUrl)
-      return alert("Upload image first");
+    if (!name.trim()) return setMsg("❌ Place name required");
+    if (!city.trim()) return setMsg("❌ City required");
 
     try {
+      // upload local files first (if any)
+      const up = await uploadLocalFiles();
 
-      setBusy(true);
+      const merged = [...(up || []), ...(uploadedUrls || []), ...(urlImages || [])]
+        .map((x) => String(x || "").trim())
+        .filter(Boolean);
+
+      if (!merged.length) {
+        setMsg("❌ Add at least 1 photo (upload or URL)");
+        return;
+      }
 
       await axios.post(
         `${API}/api/submissions`,
         {
-          name,
-          city,
-          category,
-          address,
-          images: [imageUrl],
+          name: name.trim(),
+          city: normCity(city),
+          category: category.trim(),
+          address: address.trim(),
+          location: location.trim(),
+
+          emoji,
+          vibe,
+          priceLevel,
+          bestTime,
+          instagrammable,
+
+          instagram: instagram.trim(),
+          tags: parseCsv(tagsInput),
+          activities: parseCsv(activitiesInput),
+          why: why.trim(),
+          highlight: highlight.trim(),
+
+          images: merged,
         },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        authHeader
       );
 
-      alert("Submitted for approval ✅");
-
+      alert("✅ Submitted for approval!");
       navigate("/dashboard");
-
     } catch (err) {
-
-      setMsg(err?.response?.data?.message || "Submit failed");
-
-    } finally {
-
-      setBusy(false);
-
+      setMsg(err?.response?.data?.message || err?.message || "Submit failed");
     }
   };
 
   return (
-    <div style={styles.page}>
+    <div style={{ padding: 20, background: "#f6f7fb", minHeight: "100vh" }}>
+      <div
+        style={{
+          maxWidth: 860,
+          margin: "0 auto",
+          background: "#fff",
+          borderRadius: 16,
+          padding: 18,
+          boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Submit a Place</h2>
+            <p style={{ margin: "6px 0", opacity: 0.8, fontSize: 13 }}>
+              Your submission will go to Admin approval before showing publicly.
+            </p>
+          </div>
 
-      <div style={styles.card}>
+          <button
+            onClick={() => navigate("/dashboard")}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 12,
+              border: "1px solid #ddd",
+              background: "#fff",
+              cursor: "pointer",
+              fontWeight: 900,
+            }}
+          >
+            ← Back
+          </button>
+        </div>
 
-        <h2>Submit a Place</h2>
+        {msg ? (
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "#fff7e6", border: "1px solid #ffe0b2" }}>
+            {msg}
+          </div>
+        ) : null}
+
+        <hr style={{ margin: "16px 0" }} />
+
+        {/* Basic fields */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Place name (required)"
+            style={{ flex: 1, minWidth: 260, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
+          />
+
+          <input
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="City (required)"
+            style={{ width: 220, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+          <input
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder="Category (Cafe/Gym/Restaurant)"
+            style={{ flex: 1, minWidth: 240, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
+          />
+
+          <input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Location (optional)"
+            style={{ flex: 1, minWidth: 240, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
+          />
+        </div>
 
         <input
-          placeholder="Place Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={styles.input}
-        />
-
-        <input
-          placeholder="City"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          style={styles.input}
-        />
-
-        <input
-          placeholder="Category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          style={styles.input}
-        />
-
-        <input
-          placeholder="Address"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
-          style={styles.input}
+          placeholder="Full Address"
+          style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #ddd", marginTop: 10 }}
+        />
+
+        {/* Admin-like selectors */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+          <select value={emoji} onChange={(e) => setEmoji(e.target.value)} style={{ width: 140, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}>
+            <option value="☕">☕ Cozy</option>
+            <option value="🌿">🌿 Nature</option>
+            <option value="🌙">🌙 Night Out</option>
+            <option value="❤️">❤️ Romantic</option>
+            <option value="🎧">🎧 Chill</option>
+            <option value="🍽️">🍽️ Food</option>
+            <option value="🏞️">🏞️ Adventure</option>
+            <option value="🧘">🧘 Relax</option>
+            <option value="🎬">🎬 Entertainment</option>
+            <option value="🛍️">🛍️ Shopping</option>
+            <option value="🏋️">🏋️ Fitness</option>
+            <option value="📸">📸 Explore</option>
+            <option value="✨">✨ Vibes</option>
+          </select>
+
+          <select value={vibe} onChange={(e) => setVibe(e.target.value)} style={{ width: 200, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}>
+            <option value="Hidden Gems">💎 Hidden Gems</option>
+            <option value="Top Rated">⭐ Top Rated</option>
+            <option value="Trending Now">🔥 Trending Now</option>
+            <option value="Peaceful Spots">🌿 Peaceful Spots</option>
+            <option value="Work Friendly">💻 Work Friendly</option>
+            <option value="Date Spots">❤️ Date Spots</option>
+            <option value="Weekend Fun">🎉 Weekend Fun</option>
+          </select>
+
+          <select value={priceLevel} onChange={(e) => setPriceLevel(e.target.value)} style={{ width: 170, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}>
+            <option value="Essential">Essential ⚡</option>
+            <option value="Signature">Signature 🌟</option>
+            <option value="Elite">Elite 👑</option>
+          </select>
+
+          <select value={bestTime} onChange={(e) => setBestTime(e.target.value)} style={{ width: 170, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}>
+            <option value="Morning">🌅 Morning</option>
+            <option value="Afternoon">☀️ Afternoon</option>
+            <option value="Evening">🌇 Evening</option>
+            <option value="Night">🌙 Night</option>
+          </select>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+          <input type="checkbox" checked={instagrammable} onChange={(e) => setInstagrammable(e.target.checked)} />
+          <span style={{ fontSize: 14 }}>📸 Instagrammable</span>
+        </div>
+
+        {/* Photos */}
+        <hr style={{ margin: "16px 0" }} />
+
+        <div
+          style={{
+            border: "1px solid #e9e9e9",
+            borderRadius: 16,
+            padding: 12,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: 900 }}>Photos (multiple)</div>
+              <div style={{ fontSize: 12.5, opacity: 0.75 }}>Upload up to 8 images or paste URLs.</div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                padding: "9px 12px",
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                background: "#fff",
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              📁 Choose files
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: "none" }}
+              onChange={(e) => {
+                onPickFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onPickFiles(e.dataTransfer.files);
+            }}
+            style={{
+              marginTop: 12,
+              padding: 14,
+              borderRadius: 14,
+              border: "1px dashed #cfcfcf",
+              background: "#fff",
+              textAlign: "center",
+              fontSize: 13,
+              opacity: 0.9,
+            }}
+          >
+            Drag & drop images here
+          </div>
+
+          <textarea
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            placeholder={"Paste image URLs (comma or new line)\nExample:\nhttps://...\nhttps://..."}
+            rows={3}
+            style={{
+              width: "100%",
+              padding: 10,
+              borderRadius: 12,
+              border: "1px solid #ddd",
+              resize: "vertical",
+              marginTop: 12,
+            }}
+          />
+
+          <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => {
+                const urls = parseUrls(urlInput);
+                setUrlImages(urls);
+                setMsg(urls.length ? `✅ Added ${urls.length} URL images` : "No valid URLs found");
+              }}
+              style={{
+                padding: "9px 12px",
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                background: "#111",
+                color: "#fff",
+                cursor: "pointer",
+                fontWeight: 900,
+              }}
+            >
+              Add URL Images
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUrlInput("");
+                setUrlImages([]);
+              }}
+              style={{
+                padding: "9px 12px",
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                background: "#fff",
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              Clear URLs
+            </button>
+
+            {uploading ? <span style={{ fontSize: 13, opacity: 0.8, alignSelf: "center" }}>Uploading...</span> : null}
+          </div>
+
+          {(localFiles.length > 0 || urlImages.length > 0) ? (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>
+                Preview ({localFiles.length + urlImages.length})
+              </div>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {localFiles.map((f, idx) => (
+                  <div
+                    key={`${f.name}-${f.size}-${idx}`}
+                    style={{
+                      width: 120,
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      border: "1px solid #e6e6e6",
+                      background: "#fff",
+                    }}
+                  >
+                    <img
+                      alt="local"
+                      src={previewUrlForLocal(f)}
+                      style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setLocalFiles((prev) => prev.filter((_, i) => i !== idx))}
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        border: "none",
+                        borderTop: "1px solid #eee",
+                        background: "#fff",
+                        cursor: "pointer",
+                        fontWeight: 900,
+                        fontSize: 12,
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+
+                {urlImages.map((u, idx) => (
+                  <div
+                    key={`${u}-${idx}`}
+                    style={{
+                      width: 120,
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      border: "1px solid #e6e6e6",
+                      background: "#fff",
+                    }}
+                  >
+                    <img
+                      alt="url"
+                      src={u.startsWith("/uploads/") ? `${API}${u}` : u}
+                      style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setUrlImages((prev) => prev.filter((_, i) => i !== idx))}
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        border: "none",
+                        borderTop: "1px solid #eee",
+                        background: "#fff",
+                        cursor: "pointer",
+                        fontWeight: 900,
+                        fontSize: 12,
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <p style={{ marginTop: 10, fontSize: 12.5, opacity: 0.75 }}>
+                Local images will upload when you click Submit.
+              </p>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Extra info */}
+        <hr style={{ margin: "16px 0" }} />
+
+        <input
+          value={instagram}
+          onChange={(e) => setInstagram(e.target.value)}
+          placeholder="Instagram link (optional)"
+          style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
         />
 
         <input
-          type="file"
-          onChange={(e) => setImageFile(e.target.files[0])}
-          style={styles.input}
+          value={why}
+          onChange={(e) => setWhy(e.target.value)}
+          placeholder="Why recommended? (e.g. Calm music + perfect for study)"
+          style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #ddd", marginTop: 10 }}
         />
 
-        <button
-          onClick={handleUpload}
-          disabled={busy}
-          style={styles.button}
-        >
-          Upload Image
-        </button>
+        <input
+          value={highlight}
+          onChange={(e) => setHighlight(e.target.value)}
+          placeholder="Highlight / Must try (e.g. Cold coffee, Pasta)"
+          style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #ddd", marginTop: 10 }}
+        />
 
-        {imageUrl && (
-          <img
-            src={`${API}${imageUrl}`}
-            alt=""
-            style={styles.preview}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+          <input
+            value={tagsInput}
+            onChange={(e) => setTagsInput(e.target.value)}
+            placeholder="Tags (comma): Study, Aesthetic, Quiet"
+            style={{ flex: 1, minWidth: 260, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
           />
-        )}
+          <input
+            value={activitiesInput}
+            onChange={(e) => setActivitiesInput(e.target.value)}
+            placeholder="Activities (comma): Open mic, Board games"
+            style={{ flex: 1, minWidth: 260, padding: 10, borderRadius: 12, border: "1px solid #ddd" }}
+          />
+        </div>
 
         <button
-          onClick={handleSubmit}
-          disabled={busy}
-          style={styles.button}
+          onClick={submitNow}
+          disabled={uploading}
+          style={{
+            width: "100%",
+            marginTop: 14,
+            padding: "12px 14px",
+            borderRadius: 14,
+            border: "1px solid #ddd",
+            background: uploading ? "#666" : "#111",
+            color: "#fff",
+            cursor: uploading ? "not-allowed" : "pointer",
+            fontWeight: 900,
+          }}
         >
-          Submit Place
+          {uploading ? "Uploading..." : "Submit for Approval"}
         </button>
-
-        <p>{msg}</p>
-
       </div>
-
     </div>
   );
 }
-
-const styles = {
-
-  page: {
-
-    display: "flex",
-
-    justifyContent: "center",
-
-    marginTop: 40,
-
-  },
-
-  card: {
-
-    width: 400,
-
-    padding: 20,
-
-    borderRadius: 10,
-
-    background: "#fff",
-
-    boxShadow: "0 0 10px rgba(0,0,0,0.1)",
-
-  },
-
-  input: {
-
-    width: "100%",
-
-    padding: 10,
-
-    marginBottom: 10,
-
-  },
-
-  button: {
-
-    width: "100%",
-
-    padding: 12,
-
-    marginTop: 5,
-
-    background: "#4CAF50",
-
-    color: "#fff",
-
-    border: "none",
-
-    borderRadius: 6,
-
-  },
-
-  preview: {
-
-    width: "100%",
-
-    marginTop: 10,
-
-  },
-
-};

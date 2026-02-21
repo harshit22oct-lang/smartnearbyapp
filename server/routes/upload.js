@@ -71,10 +71,7 @@ router.post("/", protect, (req, res) => {
 router.post("/user", protect, (req, res) => {
   upload.single("image")(req, res, (err) => {
     if (err) {
-      const msg =
-        err.code === "LIMIT_FILE_SIZE"
-          ? "File must be <= 8MB"
-          : err.message || "Upload failed";
+      const msg = err.code === "LIMIT_FILE_SIZE" ? "File must be <= 8MB" : err.message || "Upload failed";
       return res.status(400).json({ message: msg });
     }
 
@@ -83,6 +80,27 @@ router.post("/user", protect, (req, res) => {
     }
 
     return res.json({ url: `/uploads/${req.file.filename}` });
+  });
+});
+
+// ✅ NEW ✅ POST /api/upload/user-multi (Any logged-in user) - MULTI
+router.post("/user-multi", protect, (req, res) => {
+  upload.array("images", 8)(req, res, (err) => {
+    if (err) {
+      const msg =
+        err.code === "LIMIT_FILE_SIZE"
+          ? "Each file must be <= 8MB"
+          : err.code === "LIMIT_FILE_COUNT"
+          ? "Max 8 images allowed"
+          : err.message || "Upload failed";
+      return res.status(400).json({ message: msg });
+    }
+
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ message: "No images received" });
+
+    const urls = files.map((f) => `/uploads/${f.filename}`);
+    return res.json({ urls });
   });
 });
 
