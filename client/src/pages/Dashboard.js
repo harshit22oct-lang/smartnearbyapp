@@ -136,7 +136,7 @@ const Dashboard = () => {
         return;
       }
 
-      const res = await axios.post(
+      const response = await axios.post(
         `${API}/api/tickets/book`,
         { eventId },
         { headers: { Authorization: `Bearer ${token}` } }
