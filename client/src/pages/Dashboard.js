@@ -1,21 +1,31 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import PlaceCard from "../components/PlaceCard";
 
 const API = process.env.REACT_APP_API_URL;
 
-// ✅ Dashboard state persistence (so Back doesn't clear search)
+// ✅ Dashboard state persistence
 const DASH_KEY = "mn_dashboard_state_v1";
 const SAVE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
+const clamp = (lines) => ({
+  display: "-webkit-box",
+  WebkitLineClamp: lines,
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
+});
+
 const Dashboard = () => {
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
+  const token = useMemo(() => localStorage.getItem("token"), []);
+  const isBrowser = typeof window !== "undefined";
 
-  const [user, setUser] = useState(null);
+  const authHeader = useMemo(() => {
+    if (!token) return null;
+    return { headers: { Authorization: `Bearer ${token}` } };
+  }, [token]);
 
-  // ✅ City list
   const CITY_LIST = useMemo(
     () => [
       "Bhopal",
@@ -42,6 +52,11 @@ const Dashboard = () => {
     []
   );
 
+  // ----------------
+  // State
+  // ----------------
+  const [user, setUser] = useState(null);
+
   const [selectedCity, setSelectedCity] = useState("Bhopal");
   const [q, setQ] = useState("");
 
@@ -52,13 +67,25 @@ const Dashboard = () => {
   const [favPlaceIds, setFavPlaceIds] = useState([]);
   const [favList, setFavList] = useState([]);
 
-  // ✅ Admin curated fields
+  const [msg, setMsg] = useState("");
+
+  // Events
+  const [events, setEvents] = useState([]);
+  const [eventsBusy, setEventsBusy] = useState(false);
+  const [eventsMsg, setEventsMsg] = useState("");
+
+  // Admin: pending submissions
+  const [pendingSubs, setPendingSubs] = useState([]);
+  const [pendingBusy, setPendingBusy] = useState(false);
+  const [pendingMsg, setPendingMsg] = useState("");
+
+  // Admin curated form
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [address, setAddress] = useState("");
   const [rating, setRating] = useState("");
-  const [imageUrl, setImageUrl] = useState(""); // old single
-  const [photoRef, setPhotoRef] = useState(""); // old google photoRef
+  const [imageUrl, setImageUrl] = useState("");
+  const [photoRef, setPhotoRef] = useState("");
   const [location, setLocation] = useState("");
 
   const [emoji, setEmoji] = useState("✨");
@@ -71,291 +98,131 @@ const Dashboard = () => {
   const [activitiesInput, setActivitiesInput] = useState("");
   const [instagrammable, setInstagrammable] = useState(false);
 
-  // ✅ Multi photos
+  // Multi photos
   const fileInputRef = useRef(null);
-  const [localFiles, setLocalFiles] = useState([]); // File[]
+  const [localFiles, setLocalFiles] = useState([]);
   const [urlInput, setUrlInput] = useState("");
-  const [urlImages, setUrlImages] = useState([]); // string[]
+  const [urlImages, setUrlImages] = useState([]);
   const [uploading, setUploading] = useState(false);
 
-  const [msg, setMsg] = useState("");
-
-  // ✅ Google Form import states (NEW)
+  // Admin: sheet import
   const [importSheetId, setImportSheetId] = useState("");
   const [importRow, setImportRow] = useState(2);
   const [importBusy, setImportBusy] = useState(false);
   const [importMsg, setImportMsg] = useState("");
 
-  // ✅ NEW: Pending submissions (Admin)
-  const [pendingSubs, setPendingSubs] = useState([]);
-  const [pendingBusy, setPendingBusy] = useState(false);
-  const [pendingMsg, setPendingMsg] = useState("");
-
-  // ✅ EVENTS (Phase 1)
-  const [events, setEvents] = useState([]);
-  const [eventsBusy, setEventsBusy] = useState(false);
-  const [eventsMsg, setEventsMsg] = useState("");
-
-  const authHeader = useMemo(
-    () => ({ headers: { Authorization: `Bearer ${token}` } }),
-    [token]
-  );
-
-  // ✅ Events loader (NEW)
-  const fetchEvents = async (cityValue, qValue) => {
-    setEventsBusy(true);
-    setEventsMsg("");
-    try {
-      const url =
-        `${API}/api/events?city=${encodeURIComponent(
-          ((cityValue || "").toLowerCase() || "").trim()
-        )}` + (qValue ? `&q=${encodeURIComponent(qValue)}` : "");
-
-      const response = await axios.get(url);
-      const data = response.data;
-      if (Array.isArray(data)) {
-        setEvents(data);
-      }else {
-        setEvents([]);
-      }
-      
-    } catch (err) {
-      setEvents([]);
-      setEventsMsg(err?.response?.data?.message || "Events load failed");
-    } finally {
-      setEventsBusy(false);
-    }
-  };
-
-  // ✅ Booking function (NEW)
-  const bookTicket = async (eventId) => {
-    try {
-      if (!token) {
-        alert("Please login first");
-        navigate("/login");
-        return;
-      }
-
-      const response = await axios.post(
-        `${API}/api/tickets/book`,
-        { eventId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      alert("✅ Booked! Ticket added to Orders.");
-      navigate("/orders");
-    } catch (err) {
-      alert(err?.response?.data?.message || "Booking failed");
-    }
-  };
-
-  // ✅ Google Sheet Import function (NEW)
-  const fetchFromSheet = async () => {
-    try {
-      setImportBusy(true);
-      setImportMsg("");
-
-      const sheetId = importSheetId.trim();
-      const rowNumber = Number(importRow);
-
-      if (!sheetId || !rowNumber || rowNumber < 2) {
-        setImportMsg("Enter valid Sheet ID and Row (>=2)");
-        setImportBusy(false);
-        return;
-      }
-
-      const res = await axios.post(
-        `${API}/api/import/google-sheet`,
-        { sheetId, rowNumber },
-        authHeader
-      );
-
-      const d = res.data || {};
-      if (d.city) setSelectedCity(d.city);
-
-      // Auto fill admin form
-      setName(d.name || "");
-      setCategory(d.category || "");
-      setAddress(d.address || "");
-      setHighlight(d.highlight || "");
-      setWhy(d.why || "");
-
-      setTagsInput((d.tags || []).join(", "));
-      setActivitiesInput((d.activities || []).join(", "));
-
-      setUrlImages(d.images || []);
-
-      setImportMsg("✅ Imported successfully. Now click Curate.");
-    } catch (err) {
-      setImportMsg(
-        err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          err?.message ||
-          "❌ Import failed"
-      );
-    } finally {
-      setImportBusy(false);
-    }
-  };
-
   // ----------------
   // Helpers
   // ----------------
-  const normalizeCity = (s) => (s || "").trim().toLowerCase();
+  const normalizeCity = useCallback((s) => (s || "").trim().toLowerCase(), []);
 
-  const detectCityFromQuery = (raw) => {
-    const text = (raw || "").toLowerCase();
-    const found = CITY_LIST.find((c) => text.includes(normalizeCity(c)));
-    return found || null;
-  };
+  const detectCityFromQuery = useCallback(
+    (raw) => {
+      const text = (raw || "").toLowerCase();
+      const found = CITY_LIST.find((c) => text.includes(normalizeCity(c)));
+      return found || null;
+    },
+    [CITY_LIST, normalizeCity]
+  );
 
-  const stripCityFromQuery = (raw, cityName) => {
-    if (!raw) return "";
-    if (!cityName) return raw.trim();
+  const stripCityFromQuery = useCallback(
+    (raw, cityName) => {
+      if (!raw) return "";
+      if (!cityName) return raw.trim();
 
-    const cityLower = normalizeCity(cityName);
-    let t = raw.toLowerCase();
-    t = t.replace(new RegExp(`\\bin\\s+${cityLower}\\b`, "gi"), " ");
-    t = t.replace(new RegExp(`\\b${cityLower}\\b`, "gi"), " ");
-    return t.replace(/\s+/g, " ").trim();
-  };
+      const cityLower = normalizeCity(cityName);
+      let t = raw.toLowerCase();
+      t = t.replace(new RegExp(`\\bin\\s+${cityLower}\\b`, "gi"), " ");
+      t = t.replace(new RegExp(`\\b${cityLower}\\b`, "gi"), " ");
+      return t.replace(/\s+/g, " ").trim();
+    },
+    [normalizeCity]
+  );
 
-  const buildGoogleQuery = (keyword, cityName) => {
+  const buildGoogleQuery = useCallback((keyword, cityName) => {
     const k = (keyword || "").trim();
     const c = (cityName || "").trim();
     if (!k && !c) return "";
     if (!k) return c;
     if (!c) return k;
     return `${k} ${c}`;
-  };
+  }, []);
 
-  // ✅ Smart Mood system
-  const moods = useMemo(
-    () => [
-      {
-        label: "Romantic 👀💕",
-        keywords: [
-          "romantic restaurant",
-          "rooftop dining",
-          "couple cafe",
-          "fine dining",
-          "sunset point",
-          "candle light dinner",
-        ],
-      },
-      {
-        label: "Cozy ☕🍂",
-        keywords: [
-          "cozy places",
-          "coffee shop",
-          "book cafe",
-          "quiet restaurant",
-          "tea house",
-          "art cafe",
-          "bakery",
-        ],
-      },
-      {
-        label: "Alone 🌙",
-        keywords: [
-          "quiet place",
-          "study cafe",
-          "library",
-          "peaceful park",
-          "work cafe",
-          "reading cafe",
-        ],
-      },
-      {
-        label: "Nature ⛰️🍃",
-        keywords: ["park", "lake view", "garden", "nature spot", "sunset point"],
-      },
-      {
-        label: "Budget 💸",
-        keywords: [
-          "cheap food",
-          "budget cafe",
-          "street food",
-          "affordable restaurant",
-          "thali",
-        ],
-      },
-      {
-        label: "Date Night 🍽️",
-        keywords: [
-          "fine dining",
-          "romantic dinner",
-          "rooftop restaurant",
-          "candle light dinner",
-          "live music restaurant",
-        ],
-      },
-    ],
+  const googleImg = useCallback(
+    (ref) => {
+      if (!ref) return "";
+      return `${API}/api/google/photo?photoRef=${encodeURIComponent(ref)}`;
+    },
     []
   );
 
-  const googleImg = (ref) => {
-    if (!ref) return "";
-    return `${API}/api/google/photo?photoRef=${encodeURIComponent(ref)}`;
-  };
-
-  // ✅ IMPORTANT: show curated gallery first image if exists
-  const mongoImg = (b) => {
-    const imgs = Array.isArray(b?.images) ? b.images.filter(Boolean) : [];
-    if (imgs.length > 0) {
-      const u = imgs[0];
-      if (String(u).startsWith("/uploads/")) return `${API}${u}`;
-      return u;
-    }
-    if (b?.photoRef) return googleImg(b.photoRef);
-    if (b?.imageUrl) return b.imageUrl;
-    return "";
-  };
-
-  const chip = (text) => (
-    <span
-      key={text}
-      style={{
-        display: "inline-block",
-        padding: "4px 10px",
-        borderRadius: 999,
-        border: "1px solid #e6e6e6",
-        background: "#fafafa",
-        fontSize: 12,
-        marginRight: 6,
-        marginTop: 6,
-      }}
-    >
-      {text}
-    </span>
+  const mongoImg = useCallback(
+    (b) => {
+      const imgs = Array.isArray(b?.images) ? b.images.filter(Boolean) : [];
+      if (imgs.length > 0) {
+        const u = imgs[0];
+        if (String(u).startsWith("/uploads/")) return `${API}${u}`;
+        return u;
+      }
+      if (b?.photoRef) return googleImg(b.photoRef);
+      if (b?.imageUrl) return b.imageUrl;
+      return "";
+    },
+    [googleImg]
   );
 
-  // ----------------
-  // ✅ Save / Restore dashboard results
-  // ----------------
-  const saveDashState = (override = {}) => {
-    try {
-      const payload = {
-        selectedCity,
-        q,
-        results,
-        googleResults,
-        scrollY: window.scrollY,
-        ts: Date.now(),
-        ...override,
-      };
-      sessionStorage.setItem(DASH_KEY, JSON.stringify(payload));
-    } catch {
-      // ignore
-    }
-  };
+  const chip = useCallback((text) => {
+    if (!text) return null;
+    return (
+      <span
+        key={text}
+        style={{
+          display: "inline-block",
+          padding: "4px 10px",
+          borderRadius: 999,
+          border: "1px solid #e6e6e6",
+          background: "#fafafa",
+          fontSize: 12,
+          marginRight: 6,
+          marginTop: 6,
+        }}
+      >
+        {text}
+      </span>
+    );
+  }, []);
 
-  const restoreDashState = () => {
+  // ----------------
+  // ✅ Save / Restore state
+  // ----------------
+  const saveDashState = useCallback(
+    (override = {}) => {
+      if (!isBrowser) return;
+      try {
+        const payload = {
+          selectedCity,
+          q,
+          results,
+          googleResults,
+          scrollY: window.scrollY || 0,
+          ts: Date.now(),
+          ...override,
+        };
+        sessionStorage.setItem(DASH_KEY, JSON.stringify(payload));
+      } catch {
+        // ignore
+      }
+    },
+    [isBrowser, selectedCity, q, results, googleResults]
+  );
+
+  const restoreDashState = useCallback(() => {
+    if (!isBrowser) return false;
     try {
       const raw = sessionStorage.getItem(DASH_KEY);
       if (!raw) return false;
-      const s = JSON.parse(raw);
 
+      const s = JSON.parse(raw);
       if (s?.ts && Date.now() - s.ts > SAVE_TTL_MS) return false;
 
       setSelectedCity(s.selectedCity || "Bhopal");
@@ -368,22 +235,36 @@ const Dashboard = () => {
     } catch {
       return false;
     }
-  };
+  }, [isBrowser]);
 
   // ----------------
-  // Data loaders
+  // Loaders
   // ----------------
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
+    if (!API) return;
+    if (!authHeader) {
+      // No token => go login
+      localStorage.removeItem("token");
+      if (isBrowser) window.location.href = "/login";
+      return;
+    }
     try {
       const res = await axios.get(`${API}/api/auth/profile`, authHeader);
       setUser(res.data);
     } catch (err) {
       localStorage.removeItem("token");
-      window.location.href = "/login";
+      if (isBrowser) window.location.href = "/login";
     }
-  };
+  }, [authHeader, isBrowser]);
 
-  const fetchFavorites = async () => {
+  const fetchFavorites = useCallback(async () => {
+    if (!API) return;
+    if (!authHeader) {
+      setFavList([]);
+      setFavIds([]);
+      setFavPlaceIds([]);
+      return;
+    }
     try {
       const res = await axios.get(`${API}/api/favorites`, authHeader);
       const list = res.data || [];
@@ -395,230 +276,258 @@ const Dashboard = () => {
       setFavIds([]);
       setFavPlaceIds([]);
     }
-  };
+  }, [authHeader]);
 
-  // ✅ NEW: Admin - fetch pending submissions
-  const fetchPendingSubmissions = async () => {
+  const fetchPendingSubmissions = useCallback(async () => {
+    if (!API || !authHeader) return;
     try {
       setPendingBusy(true);
       setPendingMsg("");
-      const res = await axios.get(
-        `${API}/api/submissions?status=pending`,
-        authHeader
-      );
+      const res = await axios.get(`${API}/api/submissions?status=pending`, authHeader);
       setPendingSubs(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setPendingSubs([]);
-      setPendingMsg(
-        err?.response?.data?.message || "Failed to load pending submissions"
-      );
+      setPendingMsg(err?.response?.data?.message || "Failed to load pending submissions");
     } finally {
       setPendingBusy(false);
     }
-  };
+  }, [authHeader]);
 
-  useEffect(() => {
-    // ✅ restore immediately so back keeps results
-    restoreDashState();
-    fetchProfile();
-    fetchFavorites();
-    // eslint-disable-next-line
-  }, []);
-
-  // ✅ When user becomes admin, load pending submissions
-  useEffect(() => {
-    if (user?.isAdmin) fetchPendingSubmissions();
-    // eslint-disable-next-line
-  }, [user?.isAdmin]);
-
-  // ✅ Call events whenever city or q changes (NEW)
-  useEffect(() => {
-    fetchEvents(selectedCity, q);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCity, q]);
+  const fetchEvents = useCallback(
+    async (cityValue, qValue) => {
+      if (!API) return;
+      setEventsBusy(true);
+      setEventsMsg("");
+      try {
+        const cityQ = encodeURIComponent(((cityValue || "").toLowerCase() || "").trim());
+        const qq = (qValue || "").trim();
+        const url = `${API}/api/events?city=${cityQ}` + (qq ? `&q=${encodeURIComponent(qq)}` : "");
+        const response = await axios.get(url);
+        const data = response.data;
+        setEvents(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setEvents([]);
+        setEventsMsg(err?.response?.data?.message || "Events load failed");
+      } finally {
+        setEventsBusy(false);
+      }
+    },
+    []
+  );
 
   // ----------------
   // Search
   // ----------------
-  const searchNow = async (overrideRawQuery) => {
-    setMsg("");
+  const searchNow = useCallback(
+    async (overrideRawQuery) => {
+      if (!API) {
+        setMsg("API URL missing. Set REACT_APP_API_URL in Vercel env.");
+        return;
+      }
+      if (!authHeader) {
+        setMsg("Please login again.");
+        navigate("/login");
+        return;
+      }
 
-    const raw = (overrideRawQuery ?? q ?? "").trim();
-    if (!raw) {
-      setMsg("Type something to search");
-      return;
-    }
+      setMsg("");
 
-    // Clear results only AFTER we know we will search
-    setResults([]);
-    setGoogleResults([]);
+      const raw = (overrideRawQuery ?? q ?? "").trim();
+      if (!raw) {
+        setMsg("Type something to search");
+        return;
+      }
 
-    const detectedCity = detectCityFromQuery(raw);
-    const cityToUse = detectedCity || selectedCity;
+      setResults([]);
+      setGoogleResults([]);
 
-    if (
-      detectedCity &&
-      normalizeCity(detectedCity) !== normalizeCity(selectedCity)
-    ) {
-      setSelectedCity(detectedCity);
-    }
+      const detectedCity = detectCityFromQuery(raw);
+      const cityToUse = detectedCity || selectedCity;
 
-    const keyword = stripCityFromQuery(raw, detectedCity || cityToUse);
-    const keywordSafe = keyword || "";
-    setQ(keywordSafe);
+      if (detectedCity && normalizeCity(detectedCity) !== normalizeCity(selectedCity)) {
+        setSelectedCity(detectedCity);
+      }
 
-    // Mongo curated
-    try {
-      const mongoRes = await axios.get(
-        `${API}/api/search?city=${encodeURIComponent(
-          normalizeCity(cityToUse)
-        )}&q=${encodeURIComponent(keywordSafe)}`,
-        authHeader
-      );
-      const list = mongoRes.data || [];
-      setResults(list);
-    } catch (err) {
-      setMsg(err?.response?.data?.message || "MongoDB search failed");
-    }
+      const keyword = stripCityFromQuery(raw, detectedCity || cityToUse);
+      const keywordSafe = keyword || "";
+      setQ(keywordSafe);
 
-    // Google
-    try {
-      const gq = buildGoogleQuery(keywordSafe, cityToUse);
-      const googleRes = await axios.get(
-        `${API}/api/google?q=${encodeURIComponent(gq)}`,
-        authHeader
-      );
-      const glist = googleRes.data || [];
-      setGoogleResults(glist);
-    } catch (err) {
-      setMsg(
-        (prev) => prev || err?.response?.data?.message || "Google search failed"
-      );
-    }
+      // Mongo curated
+      try {
+        const mongoRes = await axios.get(
+          `${API}/api/search?city=${encodeURIComponent(normalizeCity(cityToUse))}&q=${encodeURIComponent(
+            keywordSafe
+          )}`,
+          authHeader
+        );
+        setResults(mongoRes.data || []);
+      } catch (err) {
+        setMsg(err?.response?.data?.message || "MongoDB search failed");
+      }
 
-    // ✅ save after search
-    setTimeout(() => {
-      saveDashState({
-        selectedCity: cityToUse,
-        q: keywordSafe,
-        scrollY: 0,
-      });
-      window.scrollTo(0, 0);
-    }, 0);
-  };
+      // Google
+      try {
+        const gq = buildGoogleQuery(keywordSafe, cityToUse);
+        const googleRes = await axios.get(`${API}/api/google?q=${encodeURIComponent(gq)}`, authHeader);
+        setGoogleResults(googleRes.data || []);
+      } catch (err) {
+        setMsg((prev) => prev || err?.response?.data?.message || "Google search failed");
+      }
+
+      // Save after search
+      setTimeout(() => {
+        saveDashState({ selectedCity: cityToUse, q: keywordSafe, scrollY: 0 });
+        if (isBrowser) window.scrollTo(0, 0);
+      }, 0);
+    },
+    [
+      authHeader,
+      buildGoogleQuery,
+      detectCityFromQuery,
+      isBrowser,
+      navigate,
+      normalizeCity,
+      q,
+      saveDashState,
+      selectedCity,
+      stripCityFromQuery,
+    ]
+  );
 
   // ----------------
   // Favorites
   // ----------------
-  const toggleFavorite = async (businessId) => {
-    setMsg("");
-    try {
-      await axios.post(`${API}/api/favorites/${businessId}`, {}, authHeader);
-      await fetchFavorites();
-    } catch (err) {
-      setMsg(err?.response?.data?.message || "Favorite update failed");
-    }
-  };
+  const isFav = useCallback((id) => favIds.includes(id), [favIds]);
 
-  const isFav = (id) => favIds.includes(id);
+  const isGoogleSaved = useCallback(
+    (placeId) => {
+      if (!placeId) return false;
+      return favPlaceIds.includes(placeId);
+    },
+    [favPlaceIds]
+  );
 
-  const isGoogleSaved = (placeId) => {
-    if (!placeId) return false;
-    return favPlaceIds.includes(placeId);
-  };
+  const findFavoriteBusinessByPlaceId = useCallback(
+    (placeId) => {
+      if (!placeId) return null;
+      return (
+        (favList || []).find((b) => (b.placeId || "").trim() === (placeId || "").trim()) || null
+      );
+    },
+    [favList]
+  );
 
-  const findFavoriteBusinessByPlaceId = (placeId) => {
-    if (!placeId) return null;
-    return (
-      (favList || []).find(
-        (b) => (b.placeId || "").trim() === (placeId || "").trim()
-      ) || null
-    );
-  };
+  const toggleFavorite = useCallback(
+    async (businessId) => {
+      if (!API || !authHeader) return;
+      setMsg("");
+      try {
+        await axios.post(`${API}/api/favorites/${businessId}`, {}, authHeader);
+        await fetchFavorites();
+        setTimeout(saveDashState, 0);
+      } catch (err) {
+        setMsg(err?.response?.data?.message || "Favorite update failed");
+      }
+    },
+    [authHeader, fetchFavorites, saveDashState]
+  );
 
-  const deleteCurated = async (id) => {
-    setMsg("");
-    try {
-      await axios.delete(`${API}/api/search/${id}`, authHeader);
-      setMsg("✅ Deleted successfully");
-      setResults((prev) => prev.filter((x) => x._id !== id));
-      await fetchFavorites();
-      setTimeout(saveDashState, 0);
-    } catch (err) {
-      setMsg(err?.response?.data?.message || "Delete failed");
-    }
-  };
+  const deleteCurated = useCallback(
+    async (id) => {
+      if (!API || !authHeader) return;
+      setMsg("");
+      try {
+        await axios.delete(`${API}/api/search/${id}`, authHeader);
+        setMsg("✅ Deleted successfully");
+        setResults((prev) => prev.filter((x) => x._id !== id));
+        await fetchFavorites();
+        setTimeout(saveDashState, 0);
+      } catch (err) {
+        setMsg(err?.response?.data?.message || "Delete failed");
+      }
+    },
+    [authHeader, fetchFavorites, saveDashState]
+  );
 
-  // ✅ Import Google -> Mongo (NOTE: backend must set city for new Business)
-  const importGooglePlace = async (p) => {
-    const res = await axios.post(
-      `${API}/api/import-google`,
-      {
-        city: normalizeCity(selectedCity),
-        placeId: p.placeId,
-        name: p.name,
-        address: p.address,
-        rating: p.rating === "N/A" ? null : Number(p.rating),
-        photoRef: p.photoRef || "",
-      },
-      authHeader
-    );
-    return res.data?.business || res.data;
-  };
+  const importGooglePlace = useCallback(
+    async (p) => {
+      const res = await axios.post(
+        `${API}/api/import-google`,
+        {
+          city: normalizeCity(selectedCity),
+          placeId: p.placeId,
+          name: p.name,
+          address: p.address,
+          rating: p.rating === "N/A" ? null : Number(p.rating),
+          photoRef: p.photoRef || "",
+        },
+        authHeader
+      );
+      return res.data?.business || res.data;
+    },
+    [authHeader, normalizeCity, selectedCity]
+  );
 
-  const toggleGoogleSave = async (p) => {
-    setMsg("");
-    try {
-      const already = isGoogleSaved(p.placeId);
+  const toggleGoogleSave = useCallback(
+    async (p) => {
+      if (!API || !authHeader) return;
+      setMsg("");
+      try {
+        const already = isGoogleSaved(p.placeId);
 
-      if (already) {
-        const favDoc = findFavoriteBusinessByPlaceId(p.placeId);
-        if (!favDoc?._id) {
+        if (already) {
+          const favDoc = findFavoriteBusinessByPlaceId(p.placeId);
+          if (!favDoc?._id) {
+            await fetchFavorites();
+            setMsg("⚠️ Could not find saved item id. Refreshed.");
+            return;
+          }
+          await axios.post(`${API}/api/favorites/${favDoc._id}`, {}, authHeader);
           await fetchFavorites();
-          setMsg("⚠️ Could not find saved item id. Refreshed.");
+          setMsg("❌ Removed from favorites");
+          setTimeout(saveDashState, 0);
           return;
         }
-        await axios.post(`${API}/api/favorites/${favDoc._id}`, {}, authHeader);
+
+        const business = await importGooglePlace(p);
+        if (!business?._id) {
+          setMsg("Import worked but Mongo _id not returned. Check /api/import-google response.");
+          return;
+        }
+
+        await axios.post(`${API}/api/favorites/${business._id}`, {}, authHeader);
         await fetchFavorites();
-        setMsg("❌ Removed from favorites");
+        setMsg("✅ Saved from Google!");
         setTimeout(saveDashState, 0);
-        return;
+      } catch (err) {
+        setMsg(err?.response?.data?.message || "Save/Unsave failed");
       }
-
-      const business = await importGooglePlace(p);
-      if (!business?._id) {
-        setMsg(
-          "Import worked but Mongo _id not returned. Check /api/import response."
-        );
-        return;
-      }
-
-      await axios.post(`${API}/api/favorites/${business._id}`, {}, authHeader);
-      await fetchFavorites();
-      setMsg("✅ Saved from Google!");
-      setTimeout(saveDashState, 0);
-    } catch (err) {
-      setMsg(err?.response?.data?.message || "Save/Unsave failed");
-    }
-  };
+    },
+    [
+      authHeader,
+      fetchFavorites,
+      findFavoriteBusinessByPlaceId,
+      importGooglePlace,
+      isGoogleSaved,
+      saveDashState,
+    ]
+  );
 
   // -------------------------
-  // Admin photo helpers
+  // Admin: image helpers
   // -------------------------
-  const parseUrls = (raw) => {
+  const parseUrls = useCallback((raw) => {
     const txt = String(raw || "");
     const parts = txt
       .split(/[\n,]+/g)
       .map((x) => x.trim())
       .filter(Boolean);
 
-    const urls = parts.filter(
-      (u) => /^https?:\/\/.+/i.test(u) || u.startsWith("/uploads/")
-    );
+    const urls = parts.filter((u) => /^https?:\/\/.+/i.test(u) || u.startsWith("/uploads/"));
     return Array.from(new Set(urls));
-  };
+  }, []);
 
-  const onPickFiles = (files) => {
+  const onPickFiles = useCallback((files) => {
     const list = Array.from(files || []).filter(Boolean);
     if (!list.length) return;
 
@@ -630,9 +539,11 @@ const Dashboard = () => {
       });
       return next;
     });
-  };
+  }, []);
 
-  const uploadLocalFiles = async () => {
+  const uploadLocalFiles = useCallback(async () => {
+    if (!API) throw new Error("API URL missing");
+    if (!token) throw new Error("No token");
     if (!localFiles.length) return [];
 
     setUploading(true);
@@ -640,6 +551,7 @@ const Dashboard = () => {
       const formData = new FormData();
       localFiles.forEach((f) => formData.append("images", f));
 
+      // NOTE: keep your existing endpoint:
       const res = await axios.post(`${API}/api/upload`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -653,167 +565,323 @@ const Dashboard = () => {
     } finally {
       setUploading(false);
     }
-  };
+  }, [localFiles, token]);
 
-  const addBusiness = async (e) => {
-    e.preventDefault();
-    setMsg("");
+  const addBusiness = useCallback(
+    async (e) => {
+      e.preventDefault();
+      if (!API || !authHeader) return;
 
-    if (uploading) {
-      setMsg("⏳ Upload in progress, please wait...");
-      return;
-    }
-
-    try {
-      const uploadedUrls = await uploadLocalFiles();
-      const merged = [
-        ...uploadedUrls,
-        ...(urlImages || []),
-        ...(imageUrl ? [imageUrl.trim()] : []),
-      ]
-        .map((x) => String(x || "").trim())
-        .filter(Boolean);
-
-      const payload = {
-        city: normalizeCity(selectedCity),
-
-        name: (name || "").trim(),
-        category: (category || "").trim(),
-        address: (address || "").trim(),
-        location: (location || "").trim(),
-        rating: rating === "" ? null : Number(rating),
-
-        imageUrl: (imageUrl || "").trim(),
-        photoRef: (photoRef || "").trim(),
-
-        images: merged,
-
-        emoji: (emoji || "✨").trim(),
-        vibe: (vibe || "").trim(),
-        priceLevel: (priceLevel || "").trim(),
-        bestTime: (bestTime || "").trim(),
-        highlight: (highlight || "").trim(),
-        why: (why || "").trim(),
-        tags: (tagsInput || "")
-          .split(",")
-          .map((x) => x.trim())
-          .filter(Boolean),
-        activities: (activitiesInput || "")
-          .split(",")
-          .map((x) => x.trim())
-          .filter(Boolean),
-        instagrammable: !!instagrammable,
-      };
-
-      if (!payload.name) {
-        setMsg("❌ Place name is required");
+      setMsg("");
+      if (uploading) {
+        setMsg("⏳ Upload in progress, please wait...");
         return;
       }
 
-      const res = await axios.post(`${API}/api/search`, payload, authHeader);
+      try {
+        const uploadedUrls = await uploadLocalFiles();
 
-      setMsg("✅ Curated place added!");
-      setResults((prev) => [res.data, ...prev]);
+        const merged = [
+          ...uploadedUrls,
+          ...(urlImages || []),
+          ...(imageUrl ? [imageUrl.trim()] : []),
+        ]
+          .map((x) => String(x || "").trim())
+          .filter(Boolean);
 
-      // reset
-      setName("");
-      setCategory("");
-      setAddress("");
-      setLocation("");
-      setRating("");
-      setImageUrl("");
-      setPhotoRef("");
-      setEmoji("✨");
-      setVibe("Cozy");
-      setPriceLevel("₹₹");
-      setBestTime("Evening");
-      setHighlight("");
-      setWhy("");
-      setTagsInput("");
-      setActivitiesInput("");
-      setInstagrammable(false);
-      setLocalFiles([]);
-      setUrlInput("");
-      setUrlImages([]);
+        const payload = {
+          city: normalizeCity(selectedCity),
 
-      setTimeout(saveDashState, 0);
-    } catch (err) {
-      setMsg(err?.message || err?.response?.data?.message || "Add business failed");
-    }
-  };
+          name: (name || "").trim(),
+          category: (category || "").trim(),
+          address: (address || "").trim(),
+          location: (location || "").trim(),
+          rating: rating === "" ? null : Number(rating),
 
-  // ✅ NEW: Admin approve / reject actions
-  const approveSubmission = async (id) => {
-    try {
-      setPendingMsg("");
-      await axios.post(`${API}/api/submissions/${id}/approve`, {}, authHeader);
+          imageUrl: (imageUrl || "").trim(),
+          photoRef: (photoRef || "").trim(),
 
-      // remove from pending list instantly
-      setPendingSubs((prev) => prev.filter((x) => x._id !== id));
-      setPendingMsg("✅ Approved");
+          images: merged,
 
-      if ((q || "").trim()) {
-        searchNow(`${q} in ${selectedCity}`);
+          emoji: (emoji || "✨").trim(),
+          vibe: (vibe || "").trim(),
+          priceLevel: (priceLevel || "").trim(),
+          bestTime: (bestTime || "").trim(),
+          highlight: (highlight || "").trim(),
+          why: (why || "").trim(),
+          tags: (tagsInput || "")
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+          activities: (activitiesInput || "")
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+          instagrammable: !!instagrammable,
+        };
+
+        if (!payload.name) {
+          setMsg("❌ Place name is required");
+          return;
+        }
+
+        const res = await axios.post(`${API}/api/search`, payload, authHeader);
+        setMsg("✅ Curated place added!");
+        setResults((prev) => [res.data, ...prev]);
+
+        // reset form
+        setName("");
+        setCategory("");
+        setAddress("");
+        setLocation("");
+        setRating("");
+        setImageUrl("");
+        setPhotoRef("");
+        setEmoji("✨");
+        setVibe("Cozy");
+        setPriceLevel("₹₹");
+        setBestTime("Evening");
+        setHighlight("");
+        setWhy("");
+        setTagsInput("");
+        setActivitiesInput("");
+        setInstagrammable(false);
+        setLocalFiles([]);
+        setUrlInput("");
+        setUrlImages([]);
+
+        setTimeout(saveDashState, 0);
+      } catch (err) {
+        setMsg(err?.message || err?.response?.data?.message || "Add business failed");
       }
-    } catch (err) {
-      setPendingMsg(err?.response?.data?.message || "Approve failed");
-    }
-  };
+    },
+    [
+      activitiesInput,
+      address,
+      authHeader,
+      category,
+      emoji,
+      highlight,
+      imageUrl,
+      instagrammable,
+      location,
+      name,
+      normalizeCity,
+      photoRef,
+      priceLevel,
+      rating,
+      saveDashState,
+      selectedCity,
+      tagsInput,
+      uploadLocalFiles,
+      uploading,
+      urlImages,
+      vibe,
+      bestTime,
+      why,
+    ]
+  );
 
-  const rejectSubmission = async (id) => {
+  // Admin: approve / reject submissions
+  const approveSubmission = useCallback(
+    async (id) => {
+      if (!API || !authHeader) return;
+      try {
+        setPendingMsg("");
+        await axios.post(`${API}/api/submissions/${id}/approve`, {}, authHeader);
+        setPendingSubs((prev) => prev.filter((x) => x._id !== id));
+        setPendingMsg("✅ Approved");
+
+        if ((q || "").trim()) {
+          await searchNow(`${q} in ${selectedCity}`);
+        }
+      } catch (err) {
+        setPendingMsg(err?.response?.data?.message || "Approve failed");
+      }
+    },
+    [authHeader, q, searchNow, selectedCity]
+  );
+
+  const rejectSubmission = useCallback(
+    async (id) => {
+      if (!API || !authHeader) return;
+      try {
+        setPendingMsg("");
+        await axios.post(`${API}/api/submissions/${id}/reject`, {}, authHeader);
+        setPendingSubs((prev) => prev.filter((x) => x._id !== id));
+        setPendingMsg("❌ Rejected");
+      } catch (err) {
+        setPendingMsg(err?.response?.data?.message || "Reject failed");
+      }
+    },
+    [authHeader]
+  );
+
+  // Admin: sheet import
+  const fetchFromSheet = useCallback(async () => {
+    if (!API || !authHeader) return;
     try {
-      setPendingMsg("");
-      await axios.post(`${API}/api/submissions/${id}/reject`, {}, authHeader);
-      setPendingSubs((prev) => prev.filter((x) => x._id !== id));
-      setPendingMsg("❌ Rejected");
+      setImportBusy(true);
+      setImportMsg("");
+
+      const sheetId = importSheetId.trim();
+      const rowNumber = Number(importRow);
+
+      if (!sheetId || !rowNumber || rowNumber < 2) {
+        setImportMsg("Enter valid Sheet ID and Row (>=2)");
+        return;
+      }
+
+      const res = await axios.post(`${API}/api/import/google-sheet`, { sheetId, rowNumber }, authHeader);
+      const d = res.data || {};
+
+      if (d.city) setSelectedCity(d.city);
+
+      setName(d.name || "");
+      setCategory(d.category || "");
+      setAddress(d.address || "");
+      setHighlight(d.highlight || "");
+      setWhy(d.why || "");
+
+      setTagsInput((d.tags || []).join(", "));
+      setActivitiesInput((d.activities || []).join(", "));
+
+      setUrlImages(d.images || []);
+      setImportMsg("✅ Imported successfully. Now click Curate.");
     } catch (err) {
-      setPendingMsg(err?.response?.data?.message || "Reject failed");
+      setImportMsg(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "❌ Import failed"
+      );
+    } finally {
+      setImportBusy(false);
     }
-  };
+  }, [authHeader, importRow, importSheetId]);
 
-  const CityChip = ({ c }) => {
-    const active = normalizeCity(c) === normalizeCity(selectedCity);
-    return (
-      <button
-        onClick={() => {
-          setSelectedCity(c);
-          setTimeout(() => saveDashState({ selectedCity: c }), 0);
-          if ((q || "").trim()) searchNow(q);
-          else {
-            setResults([]);
-            setGoogleResults([]);
-            setTimeout(() => saveDashState({ results: [], googleResults: [] }), 0);
-          }
-        }}
-        style={{
-          padding: "8px 12px",
-          borderRadius: 999,
-          border: `1px solid ${active ? "#111" : "#ddd"}`,
-          background: active ? "#111" : "#fff",
-          color: active ? "#fff" : "#111",
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-          fontSize: 13,
-        }}
-      >
-        {c}
-      </button>
-    );
-  };
+  // Ticket booking
+  const bookTicket = useCallback(
+    async (eventId) => {
+      try {
+        if (!token) {
+          alert("Please login first");
+          navigate("/login");
+          return;
+        }
 
-  const previewUrlForLocal = (file) => URL.createObjectURL(file);
+        await axios.post(
+          `${API}/api/tickets/book`,
+          { eventId },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
 
-  // ✅ wrapper: save dashboard state before leaving
-  const openDetails = (path, state = {}) => {
-    saveDashState();
-    navigate(path, { state });
-  };
+        alert("✅ Booked! Ticket added to Orders.");
+        navigate("/orders");
+      } catch (err) {
+        alert(err?.response?.data?.message || "Booking failed");
+      }
+    },
+    [navigate, token]
+  );
 
-  const goSubmit = () => {
+  // Navigation helpers
+  const openDetails = useCallback(
+    (path, state = {}) => {
+      saveDashState();
+      navigate(path, { state });
+    },
+    [navigate, saveDashState]
+  );
+
+  const goSubmit = useCallback(() => {
     saveDashState();
     navigate("/submit");
-  };
+  }, [navigate, saveDashState]);
 
+  // ----------------
+  // Moods
+  // ----------------
+  const moods = useMemo(
+    () => [
+      {
+        label: "Romantic 👀💕",
+        keywords: ["romantic restaurant", "rooftop dining", "couple cafe", "fine dining", "sunset point", "candle light dinner"],
+      },
+      {
+        label: "Cozy ☕🍂",
+        keywords: ["cozy places", "coffee shop", "book cafe", "quiet restaurant", "tea house", "art cafe", "bakery"],
+      },
+      {
+        label: "Alone 🌙",
+        keywords: ["quiet place", "study cafe", "library", "peaceful park", "work cafe", "reading cafe"],
+      },
+      { label: "Nature ⛰️🍃", keywords: ["park", "lake view", "garden", "nature spot", "sunset point"] },
+      { label: "Budget 💸", keywords: ["cheap food", "budget cafe", "street food", "affordable restaurant", "thali"] },
+      { label: "Date Night 🍽️", keywords: ["fine dining", "romantic dinner", "rooftop restaurant", "candle light dinner", "live music restaurant"] },
+    ],
+    []
+  );
+
+  // ----------------
+  // Effects (NO eslint warnings)
+  // ----------------
+  useEffect(() => {
+    restoreDashState();
+    fetchProfile();
+    fetchFavorites();
+  }, [restoreDashState, fetchProfile, fetchFavorites]);
+
+  useEffect(() => {
+    if (user?.isAdmin) fetchPendingSubmissions();
+  }, [user?.isAdmin, fetchPendingSubmissions]);
+
+  useEffect(() => {
+    fetchEvents(selectedCity, q);
+  }, [fetchEvents, selectedCity, q]);
+
+  // ----------------
+  // UI components
+  // ----------------
+  const CityChip = useCallback(
+    ({ c }) => {
+      const active = normalizeCity(c) === normalizeCity(selectedCity);
+      return (
+        <button
+          onClick={() => {
+            setSelectedCity(c);
+            setTimeout(() => saveDashState({ selectedCity: c }), 0);
+
+            if ((q || "").trim()) searchNow(q);
+            else {
+              setResults([]);
+              setGoogleResults([]);
+              setTimeout(() => saveDashState({ results: [], googleResults: [] }), 0);
+            }
+          }}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 999,
+            border: `1px solid ${active ? "#111" : "#ddd"}`,
+            background: active ? "#111" : "#fff",
+            color: active ? "#fff" : "#111",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            fontSize: 13,
+          }}
+        >
+          {c}
+        </button>
+      );
+    },
+    [normalizeCity, q, saveDashState, searchNow, selectedCity]
+  );
+
+  const previewUrlForLocal = useCallback((file) => URL.createObjectURL(file), []);
+
+  // ----------------
+  // Render
+  // ----------------
   return (
     <div style={{ padding: 20, background: "#f6f7fb", minHeight: "100vh" }}>
       <div
@@ -871,9 +939,9 @@ const Dashboard = () => {
 
             <button
               onClick={() => {
-                sessionStorage.removeItem(DASH_KEY);
+                if (isBrowser) sessionStorage.removeItem(DASH_KEY);
                 localStorage.removeItem("token");
-                window.location.href = "/login";
+                if (isBrowser) window.location.href = "/login";
               }}
               style={{
                 padding: "8px 12px",
@@ -904,8 +972,9 @@ const Dashboard = () => {
               <select
                 value={selectedCity}
                 onChange={(e) => {
-                  setSelectedCity(e.target.value);
-                  setTimeout(() => saveDashState({ selectedCity: e.target.value }), 0);
+                  const next = e.target.value;
+                  setSelectedCity(next);
+                  setTimeout(() => saveDashState({ selectedCity: next }), 0);
 
                   if ((q || "").trim()) searchNow(q);
                   else {
@@ -962,15 +1031,7 @@ const Dashboard = () => {
           </div>
 
           {/* Search bar */}
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              flexWrap: "wrap",
-              marginTop: 10,
-            }}
-          >
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
             <div
               style={{
                 display: "flex",
@@ -1019,7 +1080,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* ✅ Mood buttons */}
+          {/* Mood buttons */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
             {moods.map((m) => (
               <button
@@ -1047,7 +1108,7 @@ const Dashboard = () => {
 
         <hr style={{ margin: "18px 0" }} />
 
-        {/* ✅ EVENTS SECTION */}
+        {/* EVENTS */}
         <div
           style={{
             marginTop: 14,
@@ -1084,9 +1145,7 @@ const Dashboard = () => {
             </div>
           ) : null}
 
-          {eventsBusy ? (
-            <div style={{ marginTop: 12, fontSize: 13, opacity: 0.75 }}>Loading events...</div>
-          ) : null}
+          {eventsBusy ? <div style={{ marginTop: 12, fontSize: 13, opacity: 0.75 }}>Loading events...</div> : null}
 
           {!eventsBusy && (!events || events.length === 0) ? (
             <div style={{ marginTop: 12, fontSize: 13, opacity: 0.75 }}>No events found for this city.</div>
@@ -1114,9 +1173,7 @@ const Dashboard = () => {
                     <div
                       style={{
                         height: 130,
-                        background: ev.bannerImage
-                          ? `url(${ev.bannerImage}) center/cover no-repeat`
-                          : "linear-gradient(135deg,#111,#444)",
+                        background: ev.bannerImage ? `url(${ev.bannerImage}) center/cover no-repeat` : "linear-gradient(135deg,#111,#444)",
                       }}
                     />
 
@@ -1131,9 +1188,7 @@ const Dashboard = () => {
                       </div>
 
                       <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                        <div style={{ fontWeight: 900 }}>
-                          {isFree ? "FREE" : `₹${Number(ev.price || 0)}`}
-                        </div>
+                        <div style={{ fontWeight: 900 }}>{isFree ? "FREE" : `₹${Number(ev.price || 0)}`}</div>
 
                         {canBook ? (
                           <button
@@ -1178,19 +1233,14 @@ const Dashboard = () => {
                 const ratingText = b.rating ? `⭐ ${b.rating}` : "";
                 const badge = `${b.emoji || "✨"} ${b.vibe || "Recommended"}`;
 
-                const topInfo = [
-                  b.priceLevel ? `💸 ${b.priceLevel}` : "",
-                  b.bestTime ? `⏰ ${b.bestTime}` : "",
-                  b.instagrammable ? "📸 Instagram" : "",
-                ]
+                const topInfo = [b.priceLevel ? `💸 ${b.priceLevel}` : "", b.bestTime ? `⏰ ${b.bestTime}` : "", b.instagrammable ? "📸 Instagram" : ""]
                   .filter(Boolean)
                   .join("  •  ");
 
                 const tagChips = (b.tags || []).slice(0, 4).map((t) => chip(`#${t}`));
                 const actChips = (b.activities || []).slice(0, 3).map((a) => chip(`🎯 ${a}`));
 
-                const extraLine =
-                  (b.why ? `💡 ${b.why}` : "") + (b.highlight ? `\n🔥 ${b.highlight}` : "");
+                const extraLine = (b.why ? `💡 ${b.why}` : "") + (b.highlight ? `\n🔥 ${b.highlight}` : "");
 
                 return (
                   <div key={b._id}>
@@ -1284,7 +1334,7 @@ const Dashboard = () => {
           ))
         )}
 
-        {/* ✅ NEW: Admin Pending Submissions */}
+        {/* Admin Pending Submissions */}
         {user?.isAdmin ? (
           <>
             <hr style={{ margin: "18px 0" }} />
@@ -1315,11 +1365,7 @@ const Dashboard = () => {
               <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 {pendingSubs.map((s) => {
                   const img = (Array.isArray(s.images) && s.images[0]) || "";
-                  const imgFull = img
-                    ? img.startsWith("/uploads/")
-                      ? `${API}${img}`
-                      : img
-                    : "";
+                  const imgFull = img ? (img.startsWith("/uploads/") ? `${API}${img}` : img) : "";
 
                   return (
                     <div
@@ -1354,7 +1400,16 @@ const Dashboard = () => {
                         </div>
 
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <div
+                            style={{
+                              fontWeight: 900,
+                              fontSize: 14,
+                              marginBottom: 4,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
                             {s.name || "Untitled"}
                           </div>
                           <div style={{ fontSize: 12.5, opacity: 0.85 }}>
@@ -1363,7 +1418,7 @@ const Dashboard = () => {
                           <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 2 }}>
                             <b>Category:</b> {s.category || "-"}
                           </div>
-                          <div style={{ fontSize: 12.5, opacity: 0.75, marginTop: 2 }}>
+                          <div style={{ fontSize: 12.5, opacity: 0.75, marginTop: 2, ...clamp(2) }}>
                             {s.address || ""}
                           </div>
                         </div>
@@ -1408,7 +1463,7 @@ const Dashboard = () => {
           </>
         ) : null}
 
-        {/* Admin form */}
+        {/* Admin Form */}
         {user?.isAdmin ? (
           <>
             <hr style={{ margin: "18px 0" }} />
@@ -1419,7 +1474,7 @@ const Dashboard = () => {
             </p>
 
             <form onSubmit={addBusiness} style={{ maxWidth: 760 }}>
-              {/* ✅ Import from Google Form (Sheet) */}
+              {/* Import from sheet */}
               <div
                 style={{
                   padding: 14,
@@ -1749,17 +1804,13 @@ const Dashboard = () => {
                       Clear URLs
                     </button>
 
-                    {uploading ? (
-                      <span style={{ fontSize: 13, opacity: 0.8, alignSelf: "center" }}>Uploading...</span>
-                    ) : null}
+                    {uploading ? <span style={{ fontSize: 13, opacity: 0.8, alignSelf: "center" }}>Uploading...</span> : null}
                   </div>
                 </div>
 
                 {(localFiles.length > 0 || urlImages.length > 0) ? (
                   <div style={{ marginTop: 12 }}>
-                    <div style={{ fontWeight: 800, marginBottom: 8 }}>
-                      Preview ({localFiles.length + urlImages.length})
-                    </div>
+                    <div style={{ fontWeight: 800, marginBottom: 8 }}>Preview ({localFiles.length + urlImages.length})</div>
 
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       {localFiles.map((f, idx) => (
@@ -1836,14 +1887,12 @@ const Dashboard = () => {
                       ))}
                     </div>
 
-                    <p style={{ marginTop: 10, fontSize: 12.5, opacity: 0.75 }}>
-                      Local images will upload when you submit the form.
-                    </p>
+                    <p style={{ marginTop: 10, fontSize: 12.5, opacity: 0.75 }}>Local images will upload when you submit the form.</p>
                   </div>
                 ) : null}
               </div>
 
-              {/* optional old fields */}
+              {/* Optional old fields */}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <input
                   value={imageUrl}
@@ -1929,11 +1978,7 @@ const Dashboard = () => {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={instagrammable}
-                  onChange={(e) => setInstagrammable(e.target.checked)}
-                />
+                <input type="checkbox" checked={instagrammable} onChange={(e) => setInstagrammable(e.target.checked)} />
                 <span style={{ fontSize: 14 }}>📸 Instagrammable</span>
               </div>
 
@@ -1966,9 +2011,7 @@ const Dashboard = () => {
                 {uploading ? "Uploading..." : "Add Curated Place"}
               </button>
 
-              <p style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-                Tip: Add photos using file upload or multiple URLs.
-              </p>
+              <p style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>Tip: Add photos using file upload or multiple URLs.</p>
             </form>
           </>
         ) : null}
