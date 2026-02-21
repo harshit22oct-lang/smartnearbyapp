@@ -8,17 +8,22 @@ import Dashboard from "./pages/Dashboard";
 import PlaceDetails from "./pages/PlaceDetails";
 import SubmitPlace from "./pages/SubmitPlace";
 
+// ✅ Ticket system pages
+import Orders from "./pages/Orders";
+import TicketView from "./pages/TicketView";
+
 function App() {
   return (
     <Router>
       <Routes>
+
         {/* Default route */}
         <Route path="/" element={<Navigate to="/login" />} />
 
         {/* Auth */}
         <Route path="/login" element={<Login />} />
 
-        {/* Protected pages */}
+        {/* Dashboard */}
         <Route
           path="/dashboard"
           element={
@@ -28,7 +33,7 @@ function App() {
           }
         />
 
-        {/* ✅ User Submit Page */}
+        {/* Submit place */}
         <Route
           path="/submit"
           element={
@@ -38,6 +43,7 @@ function App() {
           }
         />
 
+        {/* Place details */}
         <Route
           path="/place/:source/:id"
           element={
@@ -47,8 +53,29 @@ function App() {
           }
         />
 
+        {/* ✅ NEW: Orders page */}
+        <Route
+          path="/orders"
+          element={
+            <ProtectedRoute>
+              <Orders />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ NEW: Ticket view page */}
+        <Route
+          path="/ticket/:id"
+          element={
+            <ProtectedRoute>
+              <TicketView />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" />} />
+
       </Routes>
     </Router>
   );

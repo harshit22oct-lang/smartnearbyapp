@@ -117,6 +117,9 @@ app.use("/api/import", importRoute);
 
 app.use("/api/import-google", importGoogleOldRoute);
 
+app.use("/api/events", require("./routes/events"));
+app.use("/api/tickets", require("./routes/tickets"));
+
 
 // =====================================================
 // 404

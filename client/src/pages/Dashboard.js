@@ -91,10 +91,57 @@ const Dashboard = () => {
   const [pendingBusy, setPendingBusy] = useState(false);
   const [pendingMsg, setPendingMsg] = useState("");
 
+  // ✅ EVENTS (Phase 1)
+  const [events, setEvents] = useState([]);
+  const [eventsBusy, setEventsBusy] = useState(false);
+  const [eventsMsg, setEventsMsg] = useState("");
+
   const authHeader = useMemo(
     () => ({ headers: { Authorization: `Bearer ${token}` } }),
     [token]
   );
+
+  // ✅ Events loader (NEW)
+  const fetchEvents = async (cityValue, qValue) => {
+    setEventsBusy(true);
+    setEventsMsg("");
+    try {
+      const url =
+        `${API}/api/events?city=${encodeURIComponent(
+          ((cityValue || "").toLowerCase() || "").trim()
+        )}` + (qValue ? `&q=${encodeURIComponent(qValue)}` : "");
+
+      const res = await axios.get(url);
+      setEvents(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      setEvents([]);
+      setEventsMsg(err?.response?.data?.message || "Events load failed");
+    } finally {
+      setEventsBusy(false);
+    }
+  };
+
+  // ✅ Booking function (NEW)
+  const bookTicket = async (eventId) => {
+    try {
+      if (!token) {
+        alert("Please login first");
+        navigate("/login");
+        return;
+      }
+
+      const res = await axios.post(
+        `${API}/api/tickets/book`,
+        { eventId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      alert("✅ Booked! Ticket added to Orders.");
+      navigate("/orders");
+    } catch (err) {
+      alert(err?.response?.data?.message || "Booking failed");
+    }
+  };
 
   // ✅ Google Sheet Import function (NEW)
   const fetchFromSheet = async () => {
@@ -349,11 +396,16 @@ const Dashboard = () => {
     try {
       setPendingBusy(true);
       setPendingMsg("");
-      const res = await axios.get(`${API}/api/submissions?status=pending`, authHeader);
+      const res = await axios.get(
+        `${API}/api/submissions?status=pending`,
+        authHeader
+      );
       setPendingSubs(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setPendingSubs([]);
-      setPendingMsg(err?.response?.data?.message || "Failed to load pending submissions");
+      setPendingMsg(
+        err?.response?.data?.message || "Failed to load pending submissions"
+      );
     } finally {
       setPendingBusy(false);
     }
@@ -372,6 +424,12 @@ const Dashboard = () => {
     if (user?.isAdmin) fetchPendingSubmissions();
     // eslint-disable-next-line
   }, [user?.isAdmin]);
+
+  // ✅ Call events whenever city or q changes (NEW)
+  useEffect(() => {
+    fetchEvents(selectedCity, q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCity, q]);
 
   // ----------------
   // Search
@@ -392,7 +450,10 @@ const Dashboard = () => {
     const detectedCity = detectCityFromQuery(raw);
     const cityToUse = detectedCity || selectedCity;
 
-    if (detectedCity && normalizeCity(detectedCity) !== normalizeCity(selectedCity)) {
+    if (
+      detectedCity &&
+      normalizeCity(detectedCity) !== normalizeCity(selectedCity)
+    ) {
       setSelectedCity(detectedCity);
     }
 
@@ -403,9 +464,9 @@ const Dashboard = () => {
     // Mongo curated
     try {
       const mongoRes = await axios.get(
-        `${API}/api/search?city=${encodeURIComponent(normalizeCity(cityToUse))}&q=${encodeURIComponent(
-          keywordSafe
-        )}`,
+        `${API}/api/search?city=${encodeURIComponent(
+          normalizeCity(cityToUse)
+        )}&q=${encodeURIComponent(keywordSafe)}`,
         authHeader
       );
       const list = mongoRes.data || [];
@@ -417,11 +478,16 @@ const Dashboard = () => {
     // Google
     try {
       const gq = buildGoogleQuery(keywordSafe, cityToUse);
-      const googleRes = await axios.get(`${API}/api/google?q=${encodeURIComponent(gq)}`, authHeader);
+      const googleRes = await axios.get(
+        `${API}/api/google?q=${encodeURIComponent(gq)}`,
+        authHeader
+      );
       const glist = googleRes.data || [];
       setGoogleResults(glist);
     } catch (err) {
-      setMsg((prev) => prev || err?.response?.data?.message || "Google search failed");
+      setMsg(
+        (prev) => prev || err?.response?.data?.message || "Google search failed"
+      );
     }
 
     // ✅ save after search
@@ -458,7 +524,9 @@ const Dashboard = () => {
   const findFavoriteBusinessByPlaceId = (placeId) => {
     if (!placeId) return null;
     return (
-      (favList || []).find((b) => (b.placeId || "").trim() === (placeId || "").trim()) || null
+      (favList || []).find(
+        (b) => (b.placeId || "").trim() === (placeId || "").trim()
+      ) || null
     );
   };
 
@@ -513,7 +581,9 @@ const Dashboard = () => {
 
       const business = await importGooglePlace(p);
       if (!business?._id) {
-        setMsg("Import worked but Mongo _id not returned. Check /api/import response.");
+        setMsg(
+          "Import worked but Mongo _id not returned. Check /api/import response."
+        );
         return;
       }
 
@@ -536,7 +606,9 @@ const Dashboard = () => {
       .map((x) => x.trim())
       .filter(Boolean);
 
-    const urls = parts.filter((u) => /^https?:\/\/.+/i.test(u) || u.startsWith("/uploads/"));
+    const urls = parts.filter(
+      (u) => /^https?:\/\/.+/i.test(u) || u.startsWith("/uploads/")
+    );
     return Array.from(new Set(urls));
   };
 
@@ -588,7 +660,11 @@ const Dashboard = () => {
 
     try {
       const uploadedUrls = await uploadLocalFiles();
-      const merged = [...uploadedUrls, ...(urlImages || []), ...(imageUrl ? [imageUrl.trim()] : [])]
+      const merged = [
+        ...uploadedUrls,
+        ...(urlImages || []),
+        ...(imageUrl ? [imageUrl.trim()] : []),
+      ]
         .map((x) => String(x || "").trim())
         .filter(Boolean);
 
@@ -612,8 +688,14 @@ const Dashboard = () => {
         bestTime: (bestTime || "").trim(),
         highlight: (highlight || "").trim(),
         why: (why || "").trim(),
-        tags: (tagsInput || "").split(",").map((x) => x.trim()).filter(Boolean),
-        activities: (activitiesInput || "").split(",").map((x) => x.trim()).filter(Boolean),
+        tags: (tagsInput || "")
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+        activities: (activitiesInput || "")
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
         instagrammable: !!instagrammable,
       };
 
@@ -664,9 +746,7 @@ const Dashboard = () => {
       setPendingSubs((prev) => prev.filter((x) => x._id !== id));
       setPendingMsg("✅ Approved");
 
-      // refresh curated results if user is currently viewing that city (optional)
       if ((q || "").trim()) {
-        // if searching, run same search again
         searchNow(`${q} in ${selectedCity}`);
       }
     } catch (err) {
@@ -957,6 +1037,124 @@ const Dashboard = () => {
               </button>
             ))}
           </div>
+        </div>
+
+        <hr style={{ margin: "18px 0" }} />
+
+        {/* ✅ EVENTS SECTION */}
+        <div
+          style={{
+            marginTop: 14,
+            background: "#fff",
+            borderRadius: 16,
+            padding: 14,
+            boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 900 }}>🎟️ Upcoming Events in {selectedCity}</div>
+              <div style={{ fontSize: 12.5, opacity: 0.75 }}>BookMyShow-style ticketing (Phase 1)</div>
+            </div>
+
+            <button
+              onClick={() => fetchEvents(selectedCity, q)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                background: "#fff",
+                cursor: "pointer",
+                fontWeight: 900,
+              }}
+            >
+              Refresh
+            </button>
+          </div>
+
+          {eventsMsg ? (
+            <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "#fff7e6", border: "1px solid #ffe0b2" }}>
+              {eventsMsg}
+            </div>
+          ) : null}
+
+          {eventsBusy ? (
+            <div style={{ marginTop: 12, fontSize: 13, opacity: 0.75 }}>Loading events...</div>
+          ) : null}
+
+          {!eventsBusy && (!events || events.length === 0) ? (
+            <div style={{ marginTop: 12, fontSize: 13, opacity: 0.75 }}>No events found for this city.</div>
+          ) : null}
+
+          {!eventsBusy && events?.length ? (
+            <div style={{ marginTop: 12, display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
+              {events.map((ev) => {
+                const canBook = !!ev.isCurated && !!ev.hasTickets;
+                const isFree = Number(ev.price || 0) <= 0;
+
+                return (
+                  <div
+                    key={ev._id}
+                    style={{
+                      minWidth: 260,
+                      maxWidth: 260,
+                      border: "1px solid #eee",
+                      borderRadius: 16,
+                      overflow: "hidden",
+                      background: "#fff",
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: 130,
+                        background: ev.bannerImage
+                          ? `url(${ev.bannerImage}) center/cover no-repeat`
+                          : "linear-gradient(135deg,#111,#444)",
+                      }}
+                    />
+
+                    <div style={{ padding: 12 }}>
+                      <div style={{ fontWeight: 900, fontSize: 15, lineHeight: 1.2 }}>{ev.title}</div>
+                      <div style={{ marginTop: 6, fontSize: 12.5, opacity: 0.8 }}>
+                        {ev.category ? `🎭 ${ev.category}` : "🎭 Event"} {ev.venue ? ` • 📍 ${ev.venue}` : ""}
+                      </div>
+
+                      <div style={{ marginTop: 6, fontSize: 12.5, opacity: 0.8 }}>
+                        🗓️ {ev.startAt ? new Date(ev.startAt).toLocaleString() : "TBA"}
+                      </div>
+
+                      <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                        <div style={{ fontWeight: 900 }}>
+                          {isFree ? "FREE" : `₹${Number(ev.price || 0)}`}
+                        </div>
+
+                        {canBook ? (
+                          <button
+                            onClick={() => bookTicket(ev._id)}
+                            style={{
+                              padding: "9px 10px",
+                              borderRadius: 12,
+                              border: "1px solid #ddd",
+                              background: "#111",
+                              color: "#fff",
+                              cursor: "pointer",
+                              fontWeight: 900,
+                              fontSize: 12.5,
+                            }}
+                          >
+                            {isFree ? "Get Pass" : "Book Ticket"}
+                          </button>
+                        ) : (
+                          <div style={{ fontSize: 12.5, opacity: 0.7, fontWeight: 800 }}>Info Only</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
         <hr style={{ margin: "18px 0" }} />

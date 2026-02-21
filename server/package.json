@@ -18,9 +18,12 @@
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
     "googleapis": "^171.4.0",
+    "html5-qrcode": "^2.3.8",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.6",
     "multer": "^2.0.2",
-    "passport": "^0.7.0"
+    "passport": "^0.7.0",
+    "qrcode": "^1.5.4",
+    "uuid": "^13.0.0"
   }
 }
