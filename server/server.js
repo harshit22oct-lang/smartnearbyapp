@@ -19,6 +19,10 @@ const app = express();
 // ✅ CORS
 // =====================================================
 
+// =====================================================
+// ✅ CORS (Production ready - supports custom domain + www + vercel)
+// =====================================================
+
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
@@ -34,13 +38,23 @@ const corsOptions = {
 
   origin: function (origin, callback) {
 
-    if (!origin) return callback(null, true);
+    // allow Postman / mobile apps
+    if (!origin)
+      return callback(null, true);
 
+    // allow exact matches
     if (allowedOrigins.includes(origin))
       return callback(null, true);
 
+    // allow all vercel preview deployments
     if (origin.endsWith(".vercel.app"))
       return callback(null, true);
+
+    // allow any subdomain of moodnest.in (future proof)
+    if (origin.endsWith(".moodnest.in"))
+      return callback(null, true);
+
+    console.log("❌ CORS blocked:", origin);
 
     return callback(new Error("CORS blocked"));
 
@@ -51,8 +65,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-
 // =====================================================
 // BODY PARSER
 // =====================================================
