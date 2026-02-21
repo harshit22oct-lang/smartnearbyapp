@@ -112,7 +112,7 @@ const Dashboard = () => {
         )}` + (qValue ? `&q=${encodeURIComponent(qValue)}` : "");
 
       const res = await axios.get(url);
-      setEvents(Array.isArray(res.data) ? res.data : []);
+      setEvents(Array.isArray(data) ? data : []);
     } catch (err) {
       setEvents([]);
       setEventsMsg(err?.response?.data?.message || "Events load failed");
