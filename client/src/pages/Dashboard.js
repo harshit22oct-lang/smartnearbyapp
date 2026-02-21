@@ -3,8 +3,6 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import PlaceCard from "../components/PlaceCard";
 
-const API = process.env.REACT_APP_API_URL;
-
 const DASH_KEY = "mn_dashboard_state_v1";
 const SAVE_TTL_MS = 2 * 60 * 60 * 1000;
 
@@ -17,6 +15,10 @@ const clamp = (lines) => ({
 
 const Dashboard = () => {
   const navigate = useNavigate();
+
+  // ✅ IMPORTANT: keep API inside component so hooks deps are valid (fixes Vercel CI ESLint)
+  const apiBase = useMemo(() => process.env.REACT_APP_API_URL || "", []);
+
   const token = useMemo(() => localStorage.getItem("token"), []);
   const isBrowser = typeof window !== "undefined";
 
@@ -168,10 +170,10 @@ const Dashboard = () => {
     (u) => {
       const s = String(u || "").trim();
       if (!s) return "";
-      if (s.startsWith("/uploads/")) return `${API}${s}`;
+      if (s.startsWith("/uploads/")) return `${apiBase}${s}`;
       return s;
     },
-    [API]
+    [apiBase]
   );
 
   const detectCityFromQuery = useCallback(
@@ -205,10 +207,13 @@ const Dashboard = () => {
     return `${k} ${c}`;
   }, []);
 
-  const googleImg = useCallback((ref) => {
-    if (!ref) return "";
-    return `${API}/api/google/photo?photoRef=${encodeURIComponent(ref)}`;
-  }, []);
+  const googleImg = useCallback(
+    (ref) => {
+      if (!ref) return "";
+      return `${apiBase}/api/google/photo?photoRef=${encodeURIComponent(ref)}`;
+    },
+    [apiBase]
+  );
 
   const mongoImg = useCallback(
     (b) => {
@@ -290,23 +295,23 @@ const Dashboard = () => {
   // Loaders
   // ----------------
   const fetchProfile = useCallback(async () => {
-    if (!API) return;
+    if (!apiBase) return;
     if (!authHeader) {
       localStorage.removeItem("token");
       if (isBrowser) window.location.href = "/login";
       return;
     }
     try {
-      const res = await axios.get(`${API}/api/auth/profile`, authHeader);
+      const res = await axios.get(`${apiBase}/api/auth/profile`, authHeader);
       setUser(res.data);
-    } catch (err) {
+    } catch {
       localStorage.removeItem("token");
       if (isBrowser) window.location.href = "/login";
     }
-  }, [API, authHeader, isBrowser]);
+  }, [apiBase, authHeader, isBrowser]);
 
   const fetchFavorites = useCallback(async () => {
-    if (!API) return;
+    if (!apiBase) return;
     if (!authHeader) {
       setFavList([]);
       setFavIds([]);
@@ -314,7 +319,7 @@ const Dashboard = () => {
       return;
     }
     try {
-      const res = await axios.get(`${API}/api/favorites`, authHeader);
+      const res = await axios.get(`${apiBase}/api/favorites`, authHeader);
       const list = res.data || [];
       setFavList(list);
       setFavIds(list.map((b) => b._id));
@@ -324,14 +329,14 @@ const Dashboard = () => {
       setFavIds([]);
       setFavPlaceIds([]);
     }
-  }, [API, authHeader]);
+  }, [apiBase, authHeader]);
 
   const fetchPendingSubmissions = useCallback(async () => {
-    if (!API || !authHeader) return;
+    if (!apiBase || !authHeader) return;
     try {
       setPendingBusy(true);
       setPendingMsg("");
-      const res = await axios.get(`${API}/api/submissions?status=pending`, authHeader);
+      const res = await axios.get(`${apiBase}/api/submissions?status=pending`, authHeader);
       setPendingSubs(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setPendingSubs([]);
@@ -339,14 +344,14 @@ const Dashboard = () => {
     } finally {
       setPendingBusy(false);
     }
-  }, [API, authHeader]);
+  }, [apiBase, authHeader]);
 
   const fetchOrders = useCallback(async () => {
-    if (!API || !authHeader) return;
+    if (!apiBase || !authHeader) return;
     try {
       setOrdersBusy(true);
       setOrdersMsg("");
-      const res = await axios.get(`${API}/api/tickets/mine`, authHeader);
+      const res = await axios.get(`${apiBase}/api/tickets/mine`, authHeader);
       setOrders(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setOrders([]);
@@ -354,14 +359,14 @@ const Dashboard = () => {
     } finally {
       setOrdersBusy(false);
     }
-  }, [API, authHeader]);
+  }, [apiBase, authHeader]);
 
   const fetchMySubmissions = useCallback(async () => {
-    if (!API || !authHeader) return;
+    if (!apiBase || !authHeader) return;
     try {
       setMySubsBusy(true);
       setMySubsMsg("");
-      const res = await axios.get(`${API}/api/submissions/mine`, authHeader);
+      const res = await axios.get(`${apiBase}/api/submissions/mine`, authHeader);
       setMySubs(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setMySubs([]);
@@ -369,17 +374,17 @@ const Dashboard = () => {
     } finally {
       setMySubsBusy(false);
     }
-  }, [API, authHeader]);
+  }, [apiBase, authHeader]);
 
   const fetchEvents = useCallback(
     async (cityValue, qValue) => {
-      if (!API) return;
+      if (!apiBase) return;
       setEventsBusy(true);
       setEventsMsg("");
       try {
         const cityQ = encodeURIComponent(((cityValue || "").toLowerCase() || "").trim());
         const qq = (qValue || "").trim();
-        const url = `${API}/api/events?city=${cityQ}` + (qq ? `&q=${encodeURIComponent(qq)}` : "");
+        const url = `${apiBase}/api/events?city=${cityQ}` + (qq ? `&q=${encodeURIComponent(qq)}` : "");
         const response = await axios.get(url);
         const data = response.data;
         setEvents(Array.isArray(data) ? data : []);
@@ -390,34 +395,37 @@ const Dashboard = () => {
         setEventsBusy(false);
       }
     },
-    [API]
+    [apiBase]
   );
 
   // ----------------
   // Premium Profile Upload
   // ----------------
-  const pickProfileFile = useCallback((f) => {
-    if (!f) return;
+  const pickProfileFile = useCallback(
+    (f) => {
+      if (!f) return;
 
-    if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(f.type || "")) {
-      setProfileMsg("Only image files allowed (jpg, png, webp, gif)");
-      return;
-    }
-    if (f.size > 8 * 1024 * 1024) {
-      setProfileMsg("Image must be <= 8MB");
-      return;
-    }
+      if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(f.type || "")) {
+        setProfileMsg("Only image files allowed (jpg, png, webp, gif)");
+        return;
+      }
+      if (f.size > 8 * 1024 * 1024) {
+        setProfileMsg("Image must be <= 8MB");
+        return;
+      }
 
-    setProfileMsg("");
-    setProfileFile(f);
+      setProfileMsg("");
+      setProfileFile(f);
 
-    try {
-      if (profilePreview) URL.revokeObjectURL(profilePreview);
-    } catch {}
+      try {
+        if (profilePreview) URL.revokeObjectURL(profilePreview);
+      } catch {}
 
-    const prev = URL.createObjectURL(f);
-    setProfilePreview(prev);
-  }, [profilePreview]);
+      const prev = URL.createObjectURL(f);
+      setProfilePreview(prev);
+    },
+    [profilePreview]
+  );
 
   const clearProfilePick = useCallback(() => {
     try {
@@ -430,7 +438,7 @@ const Dashboard = () => {
   }, [profilePreview]);
 
   const uploadProfileNow = useCallback(async () => {
-    if (!API) {
+    if (!apiBase) {
       setProfileMsg("API missing. Set REACT_APP_API_URL in Vercel.");
       return;
     }
@@ -452,7 +460,7 @@ const Dashboard = () => {
       const fd = new FormData();
       fd.append("image", profileFile);
 
-      const res = await axios.post(`${API}/api/upload/profile`, fd, {
+      const res = await axios.post(`${apiBase}/api/upload/profile`, fd, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
@@ -481,7 +489,7 @@ const Dashboard = () => {
       setProfileUploading(false);
       setTimeout(() => setProfileProgress(0), 800);
     }
-  }, [API, clearProfilePick, navigate, profileFile, token]);
+  }, [apiBase, clearProfilePick, navigate, profileFile, token]);
 
   const profilePhotoUrl = useMemo(() => {
     const u = user?.profilePicture || "";
@@ -493,7 +501,7 @@ const Dashboard = () => {
   // ----------------
   const searchNow = useCallback(
     async (overrideRawQuery) => {
-      if (!API) {
+      if (!apiBase) {
         setMsg("API URL missing. Set REACT_APP_API_URL in Vercel env.");
         return;
       }
@@ -527,7 +535,9 @@ const Dashboard = () => {
 
       try {
         const mongoRes = await axios.get(
-          `${API}/api/search?city=${encodeURIComponent(normalizeCity(cityToUse))}&q=${encodeURIComponent(keywordSafe)}`,
+          `${apiBase}/api/search?city=${encodeURIComponent(normalizeCity(cityToUse))}&q=${encodeURIComponent(
+            keywordSafe
+          )}`,
           authHeader
         );
         setResults(mongoRes.data || []);
@@ -537,7 +547,7 @@ const Dashboard = () => {
 
       try {
         const gq = buildGoogleQuery(keywordSafe, cityToUse);
-        const googleRes = await axios.get(`${API}/api/google?q=${encodeURIComponent(gq)}`, authHeader);
+        const googleRes = await axios.get(`${apiBase}/api/google?q=${encodeURIComponent(gq)}`, authHeader);
         setGoogleResults(googleRes.data || []);
       } catch (err) {
         setMsg((prev) => prev || err?.response?.data?.message || "Google search failed");
@@ -549,7 +559,7 @@ const Dashboard = () => {
       }, 0);
     },
     [
-      API,
+      apiBase,
       authHeader,
       buildGoogleQuery,
       detectCityFromQuery,
@@ -586,25 +596,25 @@ const Dashboard = () => {
 
   const toggleFavorite = useCallback(
     async (businessId) => {
-      if (!API || !authHeader) return;
+      if (!apiBase || !authHeader) return;
       setMsg("");
       try {
-        await axios.post(`${API}/api/favorites/${businessId}`, {}, authHeader);
+        await axios.post(`${apiBase}/api/favorites/${businessId}`, {}, authHeader);
         await fetchFavorites();
         setTimeout(saveDashState, 0);
       } catch (err) {
         setMsg(err?.response?.data?.message || "Favorite update failed");
       }
     },
-    [API, authHeader, fetchFavorites, saveDashState]
+    [apiBase, authHeader, fetchFavorites, saveDashState]
   );
 
   const deleteCurated = useCallback(
     async (id) => {
-      if (!API || !authHeader) return;
+      if (!apiBase || !authHeader) return;
       setMsg("");
       try {
-        await axios.delete(`${API}/api/search/${id}`, authHeader);
+        await axios.delete(`${apiBase}/api/search/${id}`, authHeader);
         setMsg("✅ Deleted successfully");
         setResults((prev) => prev.filter((x) => x._id !== id));
         await fetchFavorites();
@@ -613,13 +623,13 @@ const Dashboard = () => {
         setMsg(err?.response?.data?.message || "Delete failed");
       }
     },
-    [API, authHeader, fetchFavorites, saveDashState]
+    [apiBase, authHeader, fetchFavorites, saveDashState]
   );
 
   const importGooglePlace = useCallback(
     async (p) => {
       const res = await axios.post(
-        `${API}/api/import-google`,
+        `${apiBase}/api/import-google`,
         {
           city: normalizeCity(selectedCity),
           placeId: p.placeId,
@@ -632,12 +642,12 @@ const Dashboard = () => {
       );
       return res.data?.business || res.data;
     },
-    [API, authHeader, normalizeCity, selectedCity]
+    [apiBase, authHeader, normalizeCity, selectedCity]
   );
 
   const toggleGoogleSave = useCallback(
     async (p) => {
-      if (!API || !authHeader) return;
+      if (!apiBase || !authHeader) return;
       setMsg("");
       try {
         const already = isGoogleSaved(p.placeId);
@@ -649,7 +659,7 @@ const Dashboard = () => {
             setMsg("⚠️ Could not find saved item id. Refreshed.");
             return;
           }
-          await axios.post(`${API}/api/favorites/${favDoc._id}`, {}, authHeader);
+          await axios.post(`${apiBase}/api/favorites/${favDoc._id}`, {}, authHeader);
           await fetchFavorites();
           setMsg("❌ Removed from favorites");
           setTimeout(saveDashState, 0);
@@ -662,7 +672,7 @@ const Dashboard = () => {
           return;
         }
 
-        await axios.post(`${API}/api/favorites/${business._id}`, {}, authHeader);
+        await axios.post(`${apiBase}/api/favorites/${business._id}`, {}, authHeader);
         await fetchFavorites();
         setMsg("✅ Saved from Google!");
         setTimeout(saveDashState, 0);
@@ -670,7 +680,7 @@ const Dashboard = () => {
         setMsg(err?.response?.data?.message || "Save/Unsave failed");
       }
     },
-    [API, authHeader, fetchFavorites, findFavoriteBusinessByPlaceId, importGooglePlace, isGoogleSaved, saveDashState]
+    [apiBase, authHeader, fetchFavorites, findFavoriteBusinessByPlaceId, importGooglePlace, isGoogleSaved, saveDashState]
   );
 
   // -------------------------
@@ -702,7 +712,7 @@ const Dashboard = () => {
   }, []);
 
   const uploadLocalFiles = useCallback(async () => {
-    if (!API) throw new Error("API URL missing");
+    if (!apiBase) throw new Error("API URL missing");
     if (!token) throw new Error("No token");
     if (!localFiles.length) return [];
 
@@ -711,7 +721,7 @@ const Dashboard = () => {
       const formData = new FormData();
       localFiles.forEach((f) => formData.append("images", f));
 
-      const res = await axios.post(`${API}/api/upload`, formData, {
+      const res = await axios.post(`${apiBase}/api/upload`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
@@ -724,12 +734,12 @@ const Dashboard = () => {
     } finally {
       setUploading(false);
     }
-  }, [API, localFiles, token]);
+  }, [apiBase, localFiles, token]);
 
   const addBusiness = useCallback(
     async (e) => {
       e.preventDefault();
-      if (!API || !authHeader) return;
+      if (!apiBase || !authHeader) return;
 
       setMsg("");
       if (uploading) {
@@ -776,7 +786,7 @@ const Dashboard = () => {
           return;
         }
 
-        const res = await axios.post(`${API}/api/search`, payload, authHeader);
+        const res = await axios.post(`${apiBase}/api/search`, payload, authHeader);
         setMsg("✅ Curated place added!");
         setResults((prev) => [res.data, ...prev]);
 
@@ -806,7 +816,7 @@ const Dashboard = () => {
       }
     },
     [
-      API,
+      apiBase,
       activitiesInput,
       address,
       authHeader,
@@ -836,10 +846,10 @@ const Dashboard = () => {
   // Admin: approve / reject submissions
   const approveSubmission = useCallback(
     async (id) => {
-      if (!API || !authHeader) return;
+      if (!apiBase || !authHeader) return;
       try {
         setPendingMsg("");
-        await axios.post(`${API}/api/submissions/${id}/approve`, {}, authHeader);
+        await axios.post(`${apiBase}/api/submissions/${id}/approve`, {}, authHeader);
         setPendingSubs((prev) => prev.filter((x) => x._id !== id));
         setPendingMsg("✅ Approved");
         setEditOpen(false);
@@ -851,15 +861,15 @@ const Dashboard = () => {
         setPendingMsg(err?.response?.data?.message || "Approve failed");
       }
     },
-    [API, authHeader, q, searchNow, selectedCity]
+    [apiBase, authHeader, q, searchNow, selectedCity]
   );
 
   const rejectSubmission = useCallback(
     async (id) => {
-      if (!API || !authHeader) return;
+      if (!apiBase || !authHeader) return;
       try {
         setPendingMsg("");
-        await axios.post(`${API}/api/submissions/${id}/reject`, {}, authHeader);
+        await axios.post(`${apiBase}/api/submissions/${id}/reject`, {}, authHeader);
         setPendingSubs((prev) => prev.filter((x) => x._id !== id));
         setPendingMsg("❌ Rejected");
         setEditOpen(false);
@@ -867,7 +877,7 @@ const Dashboard = () => {
         setPendingMsg(err?.response?.data?.message || "Reject failed");
       }
     },
-    [API, authHeader]
+    [apiBase, authHeader]
   );
 
   // ✅ Step 5: Ticket booking (PROFILE_REQUIRED)
@@ -881,7 +891,7 @@ const Dashboard = () => {
         }
 
         await axios.post(
-          `${API}/api/tickets/book`,
+          `${apiBase}/api/tickets/book`,
           { eventId },
           { headers: { Authorization: `Bearer ${token}` } }
         );
@@ -901,7 +911,7 @@ const Dashboard = () => {
         }
       }
     },
-    [API, fetchOrders, navigate, token]
+    [apiBase, fetchOrders, navigate, token]
   );
 
   // Navigation helpers
@@ -923,7 +933,7 @@ const Dashboard = () => {
   // ----------------
   const openEditModal = useCallback(
     async (type, id, fallbackObj) => {
-      if (!API || !authHeader) return;
+      if (!apiBase || !authHeader) return;
 
       setEditOpen(true);
       setEditType(type);
@@ -934,13 +944,11 @@ const Dashboard = () => {
       try {
         let data = fallbackObj || null;
 
-        // For pending: load full doc (so admin sees everything)
         if (type === "pending") {
-          const res = await axios.get(`${API}/api/submissions/${id}`, authHeader);
+          const res = await axios.get(`${apiBase}/api/submissions/${id}`, authHeader);
           data = res.data;
         }
 
-        // For curated: we can use fallback object from list (already has fields)
         const d = data || {};
 
         setEditPayload({
@@ -968,7 +976,7 @@ const Dashboard = () => {
         setEditBusy(false);
       }
     },
-    [API, authHeader]
+    [apiBase, authHeader]
   );
 
   const closeEditModal = useCallback(() => {
@@ -980,7 +988,7 @@ const Dashboard = () => {
   }, []);
 
   const saveEdit = useCallback(async () => {
-    if (!API || !authHeader) return;
+    if (!apiBase || !authHeader) return;
     if (!editId || !editType) return;
 
     setEditBusy(true);
@@ -993,7 +1001,7 @@ const Dashboard = () => {
       };
 
       if (editType === "pending") {
-        const res = await axios.put(`${API}/api/submissions/${editId}`, payload, authHeader);
+        const res = await axios.put(`${apiBase}/api/submissions/${editId}`, payload, authHeader);
         const updated = res.data;
 
         setPendingSubs((prev) => prev.map((x) => (x._id === editId ? updated : x)));
@@ -1002,7 +1010,7 @@ const Dashboard = () => {
       }
 
       if (editType === "curated") {
-        const res = await axios.put(`${API}/api/search/${editId}`, payload, authHeader);
+        const res = await axios.put(`${apiBase}/api/search/${editId}`, payload, authHeader);
         const updated = res.data;
 
         setResults((prev) => prev.map((x) => (x._id === editId ? updated : x)));
@@ -1015,7 +1023,7 @@ const Dashboard = () => {
     } finally {
       setEditBusy(false);
     }
-  }, [API, authHeader, editId, editPayload, editType]);
+  }, [apiBase, authHeader, editId, editPayload, editType]);
 
   // ----------------
   // Moods
@@ -1024,14 +1032,7 @@ const Dashboard = () => {
     () => [
       {
         label: "Romantic 👀💕",
-        keywords: [
-          "romantic restaurant",
-          "rooftop dining",
-          "couple cafe",
-          "fine dining",
-          "sunset point",
-          "candle light dinner",
-        ],
+        keywords: ["romantic restaurant", "rooftop dining", "couple cafe", "fine dining", "sunset point", "candle light dinner"],
       },
       { label: "Cozy ☕🍂", keywords: ["cozy places", "coffee shop", "book cafe", "quiet restaurant", "tea house", "art cafe", "bakery"] },
       { label: "Alone 🌙", keywords: ["quiet place", "study cafe", "library", "peaceful park", "work cafe", "reading cafe"] },
@@ -2341,7 +2342,7 @@ const Dashboard = () => {
                           return;
                         }
 
-                        const res = await axios.post(`${API}/api/import/google-sheet`, { sheetId, rowNumber }, authHeader);
+                        const res = await axios.post(`${apiBase}/api/import/google-sheet`, { sheetId, rowNumber }, authHeader);
                         const d = res.data || {};
 
                         if (d.city) setSelectedCity(d.city);
