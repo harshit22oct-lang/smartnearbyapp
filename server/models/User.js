@@ -1,21 +1,40 @@
 const mongoose = require("mongoose");
 
-const userSchema = new mongoose.Schema(
+const UserSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
 
-    email: { type: String, required: true, unique: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
 
-    password: { type: String, required: true },
+    password: {
+      type: String,
+      required: true,
+    },
 
-    isAdmin: { type: Boolean, default: false },
-
-    // ✅ NEW — profile picture for ticket identity verification
+    // ✅ NEW: profile picture
     profilePicture: {
       type: String,
       default: "",
     },
 
-    favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Business" }],
+    isAdmin: {
+      type: Boolean,
+      default: false,
+    },
   },
- 
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model("User", UserSchema);
