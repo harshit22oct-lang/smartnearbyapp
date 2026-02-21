@@ -56,7 +56,89 @@ router.post("/", protect, async (req, res) => {
   }
 });
 
-// ✅ Admin: list pending submissions
+/**
+ * ==========================================================
+ * ✅ IMPORTANT: KEEP THESE BEFORE "/" ROUTE
+ * (so "/mine" doesn't get captured by "/:id")
+ * ==========================================================
+ */
+
+// ✅ GET /api/submissions/mine (user)
+router.get("/mine", protect, async (req, res) => {
+  try {
+    const list = await PendingPlace.find({ submittedBy: req.user.id })
+      .sort({ createdAt: -1 })
+      .limit(200);
+    return res.json(list);
+  } catch (e) {
+    console.error("Load my submissions error:", e);
+    return res.status(500).json({ message: "Failed to load my submissions" });
+  }
+});
+
+// ✅ Admin: GET /api/submissions/:id (view full pending details)
+router.get("/:id", protect, async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) return res.status(403).json({ message: "Admin only" });
+
+    const s = await PendingPlace.findById(req.params.id);
+    if (!s) return res.status(404).json({ message: "Submission not found" });
+
+    return res.json(s);
+  } catch (e) {
+    console.error("Load submission error:", e);
+    return res.status(500).json({ message: "Failed to load submission" });
+  }
+});
+
+// ✅ Admin: PUT /api/submissions/:id (edit pending before approve)
+router.put("/:id", protect, async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) return res.status(403).json({ message: "Admin only" });
+
+    const s = await PendingPlace.findById(req.params.id);
+    if (!s) return res.status(404).json({ message: "Submission not found" });
+
+    // ✅ match EXACT PendingPlace schema fields
+    const allow = [
+      "name",
+      "city",
+      "category",
+      "address",
+      "location",
+      "emoji",
+      "vibe",
+      "priceLevel",
+      "bestTime",
+      "instagrammable",
+      "images",
+      "instagram",
+      "tags",
+      "activities",
+      "highlight",
+      "why",
+      "status", // optional (admin can set pending/rejected manually)
+    ];
+
+    allow.forEach((k) => {
+      if (req.body?.[k] !== undefined) s[k] = req.body[k];
+    });
+
+    // ✅ normalize some fields if admin sends strings
+    if (req.body?.city !== undefined) s.city = normCity(req.body.city);
+    if (req.body?.tags !== undefined) s.tags = toList(req.body.tags);
+    if (req.body?.activities !== undefined) s.activities = toList(req.body.activities);
+    if (req.body?.images !== undefined) s.images = toList(req.body.images);
+
+    await s.save();
+    return res.json(s);
+  } catch (e) {
+    console.error("Update submission error:", e);
+    return res.status(500).json({ message: "Failed to update submission" });
+  }
+});
+
+// ✅ Admin: list submissions by status
 // GET /api/submissions?status=pending
 router.get("/", protect, async (req, res) => {
   try {
@@ -81,6 +163,9 @@ router.post("/:id/approve", protect, async (req, res) => {
     if (!sub) return res.status(404).json({ message: "Submission not found" });
     if (sub.status !== "pending") return res.status(400).json({ message: "Already processed" });
 
+    const images = Array.isArray(sub.images) ? sub.images : [];
+    const firstImage = images[0] || "";
+
     const business = await Business.create({
       city: sub.city,
       curated: true,
@@ -91,8 +176,21 @@ router.post("/:id/approve", protect, async (req, res) => {
       address: sub.address,
       location: sub.location,
 
-      images: sub.images || [],
-      instagram: sub.instagram,
+      // PendingPlace has no rating, keep null
+      rating: null,
+
+      // ✅ old single image fields (compat)
+      imageUrl: firstImage,
+      photoRef: "",
+
+      // ✅ new multi-images
+      images,
+
+      // not available from PendingPlace
+      placeId: "",
+
+      // ✅ instagram supported in Business (Option A)
+      instagram: sub.instagram || "",
 
       tags: sub.tags || [],
       activities: sub.activities || [],

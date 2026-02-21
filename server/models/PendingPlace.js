@@ -22,9 +22,17 @@ const PendingPlaceSchema = new mongoose.Schema(
     highlight: { type: String, trim: true, default: "" },
     why: { type: String, trim: true, default: "" },
 
-    status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
 
-    submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    submittedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true }
 );

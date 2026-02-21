@@ -37,6 +37,9 @@ const BusinessSchema = new mongoose.Schema(
     activities: { type: [String], default: [] },
     instagrammable: { type: Boolean, default: false },
 
+    // ✅ Option A: add instagram (so approve copies it)
+    instagram: { type: String, trim: true, default: "" },
+
     curated: { type: Boolean, default: true },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
