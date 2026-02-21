@@ -54,6 +54,10 @@ export default function SubmitPlace() {
 
   // photos
   const fileInputRef = useRef(null);
+
+  // ✅ ADD THIS (fix for previewMap undefined + cleanup)
+  const previewMap = useRef(new Map());
+
   const [localFiles, setLocalFiles] = useState([]);
   const [urlInput, setUrlInput] = useState("");
   const [urlImages, setUrlImages] = useState([]);
@@ -64,11 +68,18 @@ export default function SubmitPlace() {
   const [msg, setMsg] = useState("");
 
   // ✅ prevent blob-url memory leak
-  const previewMap = useRef(new Map());
   useEffect(() => {
+    const map = previewMap.current;
+
     return () => {
-      previewMap.current.forEach((url) => URL.revokeObjectURL(url));
-      previewMap.current.clear();
+      try {
+        map.forEach((url) => {
+          try {
+            URL.revokeObjectURL(url);
+          } catch {}
+        });
+        map.clear?.();
+      } catch {}
     };
   }, []);
 
@@ -104,7 +115,6 @@ export default function SubmitPlace() {
       const fd = new FormData();
       localFiles.forEach((f) => fd.append("images", f));
 
-      // ✅ do NOT set Content-Type manually (axios sets boundary)
       const res = await axios.post(`${API}/api/upload/user-multi`, fd, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -129,10 +139,8 @@ export default function SubmitPlace() {
 
     setSubmitting(true);
     try {
-      // upload local files first (if any)
       const up = await uploadLocalFiles();
 
-      // ✅ FIX: do not merge uploadedUrls again (up already contains them)
       const merged = [...(up || []), ...(urlImages || [])]
         .map((x) => String(x || "").trim())
         .filter(Boolean);
@@ -170,7 +178,6 @@ export default function SubmitPlace() {
 
       alert("✅ Submitted for approval!");
 
-      // ✅ clear form
       setLocalFiles([]);
       setUrlInput("");
       setUrlImages([]);

@@ -711,7 +711,7 @@ const Dashboard = () => {
       });
       return next;
     });
-  }, []);
+  }, [fileKey]);
 
   const uploadLocalFiles = useCallback(async () => {
     if (!apiBase) throw new Error("API URL missing");
