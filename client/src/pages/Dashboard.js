@@ -5,7 +5,6 @@ import PlaceCard from "../components/PlaceCard";
 
 const API = process.env.REACT_APP_API_URL;
 
-
 // ✅ Dashboard state persistence (so Back doesn't clear search)
 const DASH_KEY = "mn_dashboard_state_v1";
 const SAVE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
@@ -79,79 +78,72 @@ const Dashboard = () => {
   const [urlImages, setUrlImages] = useState([]); // string[]
   const [uploading, setUploading] = useState(false);
 
-const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState("");
 
-// ✅ Google Form import states (NEW)
-const [importSheetId, setImportSheetId] = useState("");
-const [importRow, setImportRow] = useState(2);
-const [importBusy, setImportBusy] = useState(false);
-const [importMsg, setImportMsg] = useState("");
+  // ✅ Google Form import states (NEW)
+  const [importSheetId, setImportSheetId] = useState("");
+  const [importRow, setImportRow] = useState(2);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
 
-const authHeader = useMemo(
-  () => ({ headers: { Authorization: `Bearer ${token}` } }),
-  [token]
-);
+  // ✅ NEW: Pending submissions (Admin)
+  const [pendingSubs, setPendingSubs] = useState([]);
+  const [pendingBusy, setPendingBusy] = useState(false);
+  const [pendingMsg, setPendingMsg] = useState("");
 
+  const authHeader = useMemo(
+    () => ({ headers: { Authorization: `Bearer ${token}` } }),
+    [token]
+  );
 
+  // ✅ Google Sheet Import function (NEW)
+  const fetchFromSheet = async () => {
+    try {
+      setImportBusy(true);
+      setImportMsg("");
 
-// ✅ Google Sheet Import function (NEW)
-const fetchFromSheet = async () => {
-  try {
-    setImportBusy(true);
-    setImportMsg("");
+      const sheetId = importSheetId.trim();
+      const rowNumber = Number(importRow);
 
-    const sheetId = importSheetId.trim();
-    const rowNumber = Number(importRow);
+      if (!sheetId || !rowNumber || rowNumber < 2) {
+        setImportMsg("Enter valid Sheet ID and Row (>=2)");
+        setImportBusy(false);
+        return;
+      }
 
-    if (!sheetId || !rowNumber || rowNumber < 2) {
-      setImportMsg("Enter valid Sheet ID and Row (>=2)");
+      const res = await axios.post(
+        `${API}/api/import/google-sheet`,
+        { sheetId, rowNumber },
+        authHeader
+      );
+
+      const d = res.data || {};
+      if (d.city) setSelectedCity(d.city);
+
+      // Auto fill admin form
+      setName(d.name || "");
+      setCategory(d.category || "");
+      setAddress(d.address || "");
+      setHighlight(d.highlight || "");
+      setWhy(d.why || "");
+
+      setTagsInput((d.tags || []).join(", "));
+      setActivitiesInput((d.activities || []).join(", "));
+
+      setUrlImages(d.images || []);
+
+      setImportMsg("✅ Imported successfully. Now click Curate.");
+    } catch (err) {
+      setImportMsg(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "❌ Import failed"
+      );
+    } finally {
       setImportBusy(false);
-      return;
     }
-
-    const res = await axios.post(
-      `${API}/api/import/google-sheet`,
-      { sheetId, rowNumber },
-      authHeader
-    );
-
-    const d = res.data || {};
-    if (d.city) setSelectedCity(d.city);
-
-    // Auto fill admin form
-    setName(d.name || "");
-    setCategory(d.category || "");
-    setAddress(d.address || "");
-    setHighlight(d.highlight || "");
-    setWhy(d.why || "");
-
-    setTagsInput((d.tags || []).join(", "));
-    setActivitiesInput((d.activities || []).join(", "));
-
-    setUrlImages(d.images || []);
-
-    setImportMsg("✅ Imported successfully. Now click Curate.");
-
-  } catch (err) {
-
-    setImportMsg(
-      err?.response?.data?.error ||
-      err?.response?.data?.message ||
-      err?.message ||
-      "❌ Import failed"
-    );
-
-  } finally {
-
-    setImportBusy(false);
-
-  }
-};
-
-
-// ----------------
-// Helpers
-// ----------------
+  };
 
   // ----------------
   // Helpers
@@ -352,6 +344,21 @@ const fetchFromSheet = async () => {
     }
   };
 
+  // ✅ NEW: Admin - fetch pending submissions
+  const fetchPendingSubmissions = async () => {
+    try {
+      setPendingBusy(true);
+      setPendingMsg("");
+      const res = await axios.get(`${API}/api/submissions?status=pending`, authHeader);
+      setPendingSubs(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      setPendingSubs([]);
+      setPendingMsg(err?.response?.data?.message || "Failed to load pending submissions");
+    } finally {
+      setPendingBusy(false);
+    }
+  };
+
   useEffect(() => {
     // ✅ restore immediately so back keeps results
     restoreDashState();
@@ -359,6 +366,12 @@ const fetchFromSheet = async () => {
     fetchFavorites();
     // eslint-disable-next-line
   }, []);
+
+  // ✅ When user becomes admin, load pending submissions
+  useEffect(() => {
+    if (user?.isAdmin) fetchPendingSubmissions();
+    // eslint-disable-next-line
+  }, [user?.isAdmin]);
 
   // ----------------
   // Search
@@ -390,9 +403,9 @@ const fetchFromSheet = async () => {
     // Mongo curated
     try {
       const mongoRes = await axios.get(
-        `${API}/api/search?city=${encodeURIComponent(
-          normalizeCity(cityToUse)
-        )}&q=${encodeURIComponent(keywordSafe)}`,
+        `${API}/api/search?city=${encodeURIComponent(normalizeCity(cityToUse))}&q=${encodeURIComponent(
+          keywordSafe
+        )}`,
         authHeader
       );
       const list = mongoRes.data || [];
@@ -404,10 +417,7 @@ const fetchFromSheet = async () => {
     // Google
     try {
       const gq = buildGoogleQuery(keywordSafe, cityToUse);
-      const googleRes = await axios.get(
-        `${API}/api/google?q=${encodeURIComponent(gq)}`,
-        authHeader
-      );
+      const googleRes = await axios.get(`${API}/api/google?q=${encodeURIComponent(gq)}`, authHeader);
       const glist = googleRes.data || [];
       setGoogleResults(glist);
     } catch (err) {
@@ -448,9 +458,7 @@ const fetchFromSheet = async () => {
   const findFavoriteBusinessByPlaceId = (placeId) => {
     if (!placeId) return null;
     return (
-      (favList || []).find(
-        (b) => (b.placeId || "").trim() === (placeId || "").trim()
-      ) || null
+      (favList || []).find((b) => (b.placeId || "").trim() === (placeId || "").trim()) || null
     );
   };
 
@@ -478,7 +486,6 @@ const fetchFromSheet = async () => {
         address: p.address,
         rating: p.rating === "N/A" ? null : Number(p.rating),
         photoRef: p.photoRef || "",
-       
       },
       authHeader
     );
@@ -647,6 +654,37 @@ const fetchFromSheet = async () => {
     }
   };
 
+  // ✅ NEW: Admin approve / reject actions
+  const approveSubmission = async (id) => {
+    try {
+      setPendingMsg("");
+      await axios.post(`${API}/api/submissions/${id}/approve`, {}, authHeader);
+
+      // remove from pending list instantly
+      setPendingSubs((prev) => prev.filter((x) => x._id !== id));
+      setPendingMsg("✅ Approved");
+
+      // refresh curated results if user is currently viewing that city (optional)
+      if ((q || "").trim()) {
+        // if searching, run same search again
+        searchNow(`${q} in ${selectedCity}`);
+      }
+    } catch (err) {
+      setPendingMsg(err?.response?.data?.message || "Approve failed");
+    }
+  };
+
+  const rejectSubmission = async (id) => {
+    try {
+      setPendingMsg("");
+      await axios.post(`${API}/api/submissions/${id}/reject`, {}, authHeader);
+      setPendingSubs((prev) => prev.filter((x) => x._id !== id));
+      setPendingMsg("❌ Rejected");
+    } catch (err) {
+      setPendingMsg(err?.response?.data?.message || "Reject failed");
+    }
+  };
+
   const CityChip = ({ c }) => {
     const active = normalizeCity(c) === normalizeCity(selectedCity);
     return (
@@ -685,6 +723,11 @@ const fetchFromSheet = async () => {
     navigate(path, { state });
   };
 
+  const goSubmit = () => {
+    saveDashState();
+    navigate("/submit");
+  };
+
   return (
     <div style={{ padding: 20, background: "#f6f7fb", minHeight: "100vh" }}>
       <div
@@ -698,7 +741,7 @@ const fetchFromSheet = async () => {
         }}
       >
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
             <h2 style={{ margin: 0 }}>MoodNest</h2>
             {user ? (
@@ -722,22 +765,41 @@ const fetchFromSheet = async () => {
             ) : null}
           </div>
 
-          <button
-            onClick={() => {
-              sessionStorage.removeItem(DASH_KEY);
-              localStorage.removeItem("token");
-              window.location.href = "/login";
-            }}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Logout
-          </button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            {!user?.isAdmin ? (
+              <button
+                onClick={goSubmit}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  background: "#111",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                ➕ Submit a Place
+              </button>
+            ) : null}
+
+            <button
+              onClick={() => {
+                sessionStorage.removeItem(DASH_KEY);
+                localStorage.removeItem("token");
+                window.location.href = "/login";
+              }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         {msg ? <p style={{ marginTop: 10 }}>{msg}</p> : null}
@@ -779,6 +841,23 @@ const fetchFromSheet = async () => {
                   </option>
                 ))}
               </select>
+
+              {!user?.isAdmin ? (
+                <button
+                  onClick={goSubmit}
+                  style={{
+                    marginLeft: "auto",
+                    padding: "8px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #ddd",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  Submit Place →
+                </button>
+              ) : null}
             </div>
 
             <div
@@ -796,66 +875,65 @@ const fetchFromSheet = async () => {
             </div>
           </div>
 
-{/* Search bar */}
-<div
-  style={{
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginTop: 10,
-  }}
->
-  <div
-    style={{
-      display: "flex",
-      gap: 10,
-      width: "100%",
-      maxWidth: 720, // looks good on desktop too
-      marginLeft: "auto",
-      marginRight: "auto",
-    }}
-  >
-    <input
-      value={q}
-      onChange={(e) => setQ(e.target.value)}
-      onBlur={() => setTimeout(saveDashState, 0)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") searchNow();
-      }}
-      placeholder={`Search in ${selectedCity}: cafe, gym, pizza... (or type "cafe in delhi")`}
-      style={{
-        flex: 1,              // ✅ fills available width
-        minWidth: 0,          // ✅ prevents overflow on iOS
-        padding: 12,
-        borderRadius: 14,
-        border: "1px solid #ddd",
-        height: 44,           // ✅ consistent mobile height
-        fontSize: 15,
-      }}
-    />
+          {/* Search bar */}
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              flexWrap: "wrap",
+              marginTop: 10,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                width: "100%",
+                maxWidth: 720,
+                marginLeft: "auto",
+                marginRight: "auto",
+              }}
+            >
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onBlur={() => setTimeout(saveDashState, 0)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") searchNow();
+                }}
+                placeholder={`Search in ${selectedCity}: cafe, gym, pizza... (or type "cafe in delhi")`}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: 12,
+                  borderRadius: 14,
+                  border: "1px solid #ddd",
+                  height: 44,
+                  fontSize: 15,
+                }}
+              />
 
-    <button
-      onClick={() => searchNow()}
-      style={{
-        padding: "0 16px",
-        height: 44,           // ✅ same height as input
-        borderRadius: 14,
-        border: "1px solid #ddd",
-        background: "#111",
-        color: "#fff",
-        cursor: "pointer",
-        fontWeight: 800,
-        whiteSpace: "nowrap",
-      }}
-    >
-      Search
-    </button>
-  </div>
-</div>
+              <button
+                onClick={() => searchNow()}
+                style={{
+                  padding: "0 16px",
+                  height: 44,
+                  borderRadius: 14,
+                  border: "1px solid #ddd",
+                  background: "#111",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Search
+              </button>
+            </div>
+          </div>
 
-
-          {/* ✅ Mood buttons (random keyword + keep city) */}
+          {/* ✅ Mood buttons */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
             {moods.map((m) => (
               <button
@@ -920,7 +998,7 @@ const fetchFromSheet = async () => {
                       subtitle2={extraLine || (b.category ? `Category: ${b.category}` : "")}
                       rightTop={ratingText || (isFav(b._id) ? "Saved" : "Curated")}
                       buttonText={user?.isAdmin ? "🗑 Delete" : isFav(b._id) ? "Remove" : "Save"}
-                      onOpen={() => openDetails(`/place/mongo/${b._id}`)} // ✅ keeps state
+                      onOpen={() => openDetails(`/place/mongo/${b._id}`)}
                       onAction={(e) => {
                         e?.stopPropagation?.();
                         if (user?.isAdmin) deleteCurated(b._id);
@@ -962,7 +1040,7 @@ const fetchFromSheet = async () => {
                       subtitle2=""
                       rightTop={saved ? "✅ Saved" : ratingText}
                       buttonText={saved ? "Unsave" : "⭐ Save"}
-                      onOpen={() => openDetails(`/place/google/${p.placeId}`)} // ✅ keeps state
+                      onOpen={() => openDetails(`/place/google/${p.placeId}`)}
                       onAction={(e) => {
                         e?.stopPropagation?.();
                         toggleGoogleSave(p);
@@ -992,7 +1070,7 @@ const fetchFromSheet = async () => {
                 subtitle2={b.why ? `💡 ${b.why}` : b.category ? `Category: ${b.category}` : ""}
                 rightTop={b.rating ? `⭐ ${b.rating}` : "Saved"}
                 buttonText={"Remove"}
-                onOpen={() => openDetails(`/place/mongo/${b._id}`)} // ✅ keeps state
+                onOpen={() => openDetails(`/place/mongo/${b._id}`)}
                 onAction={(e) => {
                   e?.stopPropagation?.();
                   toggleFavorite(b._id);
@@ -1001,6 +1079,130 @@ const fetchFromSheet = async () => {
             </div>
           ))
         )}
+
+        {/* ✅ NEW: Admin Pending Submissions */}
+        {user?.isAdmin ? (
+          <>
+            <hr style={{ margin: "18px 0" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <h3 style={{ margin: 0 }}>Pending Submissions</h3>
+              <button
+                onClick={fetchPendingSubmissions}
+                disabled={pendingBusy}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #ddd",
+                  background: "#fff",
+                  cursor: pendingBusy ? "not-allowed" : "pointer",
+                  fontWeight: 800,
+                  opacity: pendingBusy ? 0.7 : 1,
+                }}
+              >
+                {pendingBusy ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+
+            {pendingMsg ? <p style={{ marginTop: 8 }}>{pendingMsg}</p> : null}
+
+            {pendingSubs.length === 0 ? (
+              <p style={{ opacity: 0.7, marginTop: 10 }}>No pending submissions.</p>
+            ) : (
+              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                {pendingSubs.map((s) => {
+                  const img = (Array.isArray(s.images) && s.images[0]) || "";
+                  const imgFull = img
+                    ? img.startsWith("/uploads/")
+                      ? `${API}${img}`
+                      : img
+                    : "";
+
+                  return (
+                    <div
+                      key={s._id}
+                      style={{
+                        border: "1px solid #eee",
+                        borderRadius: 16,
+                        padding: 12,
+                        background: "#fff",
+                        boxShadow: "0 6px 18px rgba(0,0,0,0.04)",
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: 12 }}>
+                        <div
+                          style={{
+                            width: 96,
+                            height: 72,
+                            borderRadius: 12,
+                            overflow: "hidden",
+                            background: "#f3f3f3",
+                            border: "1px solid #eee",
+                            flex: "0 0 auto",
+                          }}
+                        >
+                          {imgFull ? (
+                            <img
+                              src={imgFull}
+                              alt=""
+                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                            />
+                          ) : null}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {s.name || "Untitled"}
+                          </div>
+                          <div style={{ fontSize: 12.5, opacity: 0.85 }}>
+                            <b>City:</b> {s.city || "-"}
+                          </div>
+                          <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 2 }}>
+                            <b>Category:</b> {s.category || "-"}
+                          </div>
+                          <div style={{ fontSize: 12.5, opacity: 0.75, marginTop: 2 }}>
+                            {s.address || ""}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                        <button
+                          onClick={() => approveSubmission(s._id)}
+                          style={{
+                            flex: 1,
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            border: "1px solid #ddd",
+                            background: "#111",
+                            color: "#fff",
+                            cursor: "pointer",
+                            fontWeight: 900,
+                          }}
+                        >
+                          ✅ Approve
+                        </button>
+                        <button
+                          onClick={() => rejectSubmission(s._id)}
+                          style={{
+                            flex: 1,
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            border: "1px solid #ddd",
+                            background: "#fff",
+                            cursor: "pointer",
+                            fontWeight: 900,
+                          }}
+                        >
+                          ❌ Reject
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : null}
 
         {/* Admin form */}
         {user?.isAdmin ? (
@@ -1023,9 +1225,7 @@ const fetchFromSheet = async () => {
                   marginBottom: 14,
                 }}
               >
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>
-                  Import from Google Form (Sheet)
-                </div>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>Import from Google Form (Sheet)</div>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <input
@@ -1077,14 +1277,8 @@ const fetchFromSheet = async () => {
                   </button>
                 </div>
 
-                {importMsg ? (
-                  <div style={{ marginTop: 10, fontWeight: 700 }}>
-                    {importMsg}
-                  </div>
-                ) : null}
+                {importMsg ? <div style={{ marginTop: 10, fontWeight: 700 }}>{importMsg}</div> : null}
               </div>
-
-              
 
               {/* Basic */}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

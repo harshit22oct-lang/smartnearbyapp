@@ -6,6 +6,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import PlaceDetails from "./pages/PlaceDetails";
+import SubmitPlace from "./pages/SubmitPlace";
 
 function App() {
   return (
@@ -23,6 +24,16 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ User Submit Page */}
+        <Route
+          path="/submit"
+          element={
+            <ProtectedRoute>
+              <SubmitPlace />
             </ProtectedRoute>
           }
         />

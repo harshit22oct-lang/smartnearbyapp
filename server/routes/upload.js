@@ -23,8 +23,8 @@ const safeName = (name) =>
   String(name || "image")
     .toLowerCase()
     .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9.\-_]/g, "") // remove weird chars
-    .slice(-80); // keep filename short
+    .replace(/[^a-z0-9.\-_]/g, "")
+    .slice(-80);
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -42,7 +42,7 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024, files: 12 }, // 8MB each, max 12
 });
 
-// ✅ POST /api/upload  (Admin only)
+// ✅ POST /api/upload  (Admin only) - MULTI
 router.post("/", protect, (req, res) => {
   if (!req.user?.isAdmin) {
     return res.status(403).json({ message: "Admin only" });
@@ -50,7 +50,6 @@ router.post("/", protect, (req, res) => {
 
   upload.array("images", 12)(req, res, (err) => {
     if (err) {
-      // multer error or our fileFilter error
       const msg =
         err.code === "LIMIT_FILE_SIZE"
           ? "Each file must be <= 8MB"
@@ -61,13 +60,29 @@ router.post("/", protect, (req, res) => {
     }
 
     const files = req.files || [];
-    if (!files.length) {
-      return res.status(400).json({ message: "No images received" });
-    }
+    if (!files.length) return res.status(400).json({ message: "No images received" });
 
-    // ✅ return urls that match your frontend logic
     const urls = files.map((f) => `/uploads/${f.filename}`);
     return res.json({ urls });
+  });
+});
+
+// ✅ POST /api/upload/user (Any logged-in user) - SINGLE
+router.post("/user", protect, (req, res) => {
+  upload.single("image")(req, res, (err) => {
+    if (err) {
+      const msg =
+        err.code === "LIMIT_FILE_SIZE"
+          ? "File must be <= 8MB"
+          : err.message || "Upload failed";
+      return res.status(400).json({ message: msg });
+    }
+
+    if (!req.file?.filename) {
+      return res.status(400).json({ message: "No image received" });
+    }
+
+    return res.json({ url: `/uploads/${req.file.filename}` });
   });
 });
 

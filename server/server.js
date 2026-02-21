@@ -42,8 +42,10 @@ const corsOptions = {
     // allow exact matches
     if (allowedOrigins.includes(origin)) return callback(null, true);
 
-    // allow ALL vercel preview domains
-    if (origin.endsWith(".vercel.app")) return callback(null, true);
+    // allow ALL vercel preview domains (safe guard if origin is not string)
+    if (typeof origin === "string" && origin.endsWith(".vercel.app")) {
+      return callback(null, true);
+    }
 
     console.log("❌ CORS blocked:", origin);
     return callback(new Error("CORS blocked"));
@@ -54,6 +56,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// (optional but helpful) handle preflight quickly
+app.options("*", cors(corsOptions));
 
 // =====================================================
 // ✅ BODY PARSER
@@ -114,7 +119,12 @@ app.use("/api/google", require("./routes/googleSearch"));
 app.use("/api/google/details", require("./routes/googleDetails"));
 app.use("/api/google/photo", require("./routes/googlePhoto"));
 app.use("/api/google-actions", require("./routes/googleSave"));
+
+// ✅ Upload (admin multi + user single)
 app.use("/api/upload", require("./routes/upload"));
+
+// ✅ User submissions (pending) + admin approve/reject
+app.use("/api/submissions", require("./routes/submissions"));
 
 // ✅ NEW: Sheet import routes (NO conflict)
 app.use("/api/import", importRoute);
@@ -137,11 +147,16 @@ app.use((req, res) => {
 // =====================================================
 
 app.use((err, req, res, next) => {
-  console.error("🔥 SERVER ERROR:", err.message);
+  const msg = err?.message || "Internal Server Error";
+  console.error("🔥 SERVER ERROR:", msg);
 
-  res.status(500).json({
-    message: err.message || "Internal Server Error",
-  });
+  // if CORS blocked, return 403 (cleaner than 500)
+  if (msg === "CORS blocked") {
+    return res.status(403).json({ message: "CORS blocked" });
+  }
+
+  // default
+  return res.status(500).json({ message: msg });
 });
 
 // =====================================================
