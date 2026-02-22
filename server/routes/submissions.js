@@ -199,6 +199,7 @@ router.post("/:id/approve", protect, async (req, res) => {
       city: sub.city,
       curated: true,
       source: "user_submission",
+      isPublished: true,
 
       name: sub.name,
       category: sub.category,
@@ -227,18 +228,76 @@ router.post("/:id/approve", protect, async (req, res) => {
       bestTime: sub.bestTime || "",
       instagrammable: !!sub.instagrammable,
 
+      submittedBy: sub.submittedBy || null,
+      sourceSubmission: sub._id,
+
       createdBy: req.user?.id || null,
     });
 
     sub.status = "approved";
     sub.reviewedBy = req.user.id;
     sub.reviewedAt = new Date();
+    sub.approvedBusiness = business._id;
     await sub.save();
 
     return res.json({ message: "Approved", business });
   } catch (err) {
     console.error("Approve submission error:", err);
     return res.status(500).json({ message: "Server error (approve submission)" });
+  }
+});
+
+// ✅ User: remove their approved place (soft delete/unpublish)
+// POST /api/submissions/:id/remove-approved
+router.post("/:id/remove-approved", protect, async (req, res) => {
+  try {
+    const sub = await PendingPlace.findById(req.params.id);
+    if (!sub) return res.status(404).json({ message: "Submission not found" });
+
+    if (String(sub.submittedBy || "") !== String(req.user.id)) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    const st = String(sub.status || "").toLowerCase();
+    if (st === "removed") {
+      return res.json({ message: "Place already removed", businessId: String(sub.approvedBusiness || "") });
+    }
+    if (st !== "approved") {
+      return res.status(400).json({ message: "Only approved submissions can be removed" });
+    }
+
+    let business = null;
+    if (sub.approvedBusiness) {
+      business = await Business.findById(sub.approvedBusiness);
+    }
+
+    if (!business) {
+      business = await Business.findOne({
+        source: "user_submission",
+        submittedBy: req.user.id,
+        city: sub.city,
+        name: sub.name,
+      }).sort({ createdAt: -1 });
+    }
+
+    if (!business) {
+      return res.status(404).json({ message: "Approved place not found" });
+    }
+
+    business.isPublished = false;
+    business.unpublishedAt = new Date();
+    business.unpublishedBy = req.user.id;
+    business.unpublishedReason = "Removed by owner";
+    await business.save();
+
+    sub.status = "removed";
+    sub.reviewedAt = new Date();
+    await sub.save();
+
+    return res.json({ message: "Place removed", businessId: String(business._id) });
+  } catch (err) {
+    console.error("Remove approved place error:", err);
+    return res.status(500).json({ message: "Server error (remove approved place)" });
   }
 });
 

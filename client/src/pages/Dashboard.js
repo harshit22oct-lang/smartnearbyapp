@@ -134,6 +134,7 @@ const Dashboard = () => {
   const [profileUploading, setProfileUploading] = useState(false);
   const [profileProgress, setProfileProgress] = useState(0);
   const [profileMsg, setProfileMsg] = useState("");
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
 
   // ✅ Admin edit modal (curated + pending)
   const [editOpen, setEditOpen] = useState(false);
@@ -497,6 +498,11 @@ const Dashboard = () => {
     const u = user?.profilePicture || "";
     return resolveUploadUrl(u);
   }, [resolveUploadUrl, user?.profilePicture]);
+
+  const userInitial = useMemo(() => {
+    const name = String(user?.name || "").trim();
+    return (name ? name.charAt(0) : "U").toUpperCase();
+  }, [user?.name]);
 
   // ----------------
   // Search
@@ -917,6 +923,63 @@ const Dashboard = () => {
     [apiBase, fetchOrders, navigate, token]
   );
 
+  const removeOrder = useCallback(
+    async (ticketId) => {
+      if (!apiBase || !authHeader || !ticketId) return;
+      const ok = window.confirm("Remove this pass from your orders?");
+      if (!ok) return;
+
+      try {
+        await axios.post(`${apiBase}/api/tickets/${ticketId}/cancel`, {}, authHeader);
+        setOrders((prev) => prev.filter((x) => x._id !== ticketId));
+        setOrdersMsg("Removed from orders");
+      } catch (err) {
+        if (err?.response?.status === 404) {
+          try {
+            await axios.post(`${apiBase}/api/tickets/${ticketId}/remove`, {}, authHeader);
+            setOrders((prev) => prev.filter((x) => x._id !== ticketId));
+            setOrdersMsg("Removed from orders");
+            return;
+          } catch {}
+        }
+        const m = err?.response?.data?.message || "Failed to remove order";
+        setOrdersMsg(m === "Route not found" ? "Please restart/redeploy backend and try again." : m);
+      }
+    },
+    [apiBase, authHeader]
+  );
+
+  const removeApprovedSubmission = useCallback(
+    async (submissionId) => {
+      if (!apiBase || !authHeader || !submissionId) return;
+      const ok = window.confirm("Remove this approved place from public dashboard?");
+      if (!ok) return;
+
+      try {
+        const res = await axios.post(`${apiBase}/api/submissions/${submissionId}/remove-approved`, {}, authHeader);
+        const removedBusinessId = String(res?.data?.businessId || "").trim();
+
+        if (removedBusinessId) {
+          setResults((prev) => prev.filter((x) => String(x?._id) !== removedBusinessId));
+          setFavList((prev) => prev.filter((x) => String(x?._id) !== removedBusinessId));
+          setFavIds((prev) => prev.filter((id) => String(id) !== removedBusinessId));
+        }
+
+        setMySubs((prev) =>
+          prev.map((x) =>
+            String(x?._id) === String(submissionId)
+              ? { ...x, status: "removed" }
+              : x
+          )
+        );
+        setMySubsMsg("Approved place removed");
+      } catch (err) {
+        setMySubsMsg(err?.response?.data?.message || "Failed to remove approved place");
+      }
+    },
+    [apiBase, authHeader]
+  );
+
   // Navigation helpers
   const openDetails = useCallback(
     (path, state = {}) => {
@@ -1082,6 +1145,10 @@ const Dashboard = () => {
     fetchEvents(selectedCity, q);
   }, [fetchEvents, selectedCity, q]);
 
+  useEffect(() => {
+    setAvatarLoadError(false);
+  }, [profilePhotoUrl]);
+
   // ----------------
   // UI components
   // ----------------
@@ -1168,40 +1235,106 @@ const Dashboard = () => {
 
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             {!user?.isAdmin ? (
-              <button
-                onClick={() => {
-                  saveDashState();
-                  navigate("/submit");
-                }}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.12)",
-                  background: "#111",
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 900,
-                }}
-              >
-                ➕ Submit a Place
-                
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    saveDashState();
+                    navigate("/submit");
+                  }}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    background: "#111",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  Submit a Place
+                </button>
+
+                <button
+                  onClick={() => {
+                    saveDashState();
+                    navigate("/submit-event");
+                  }}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    background: "rgba(255,255,255,0.85)",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  Submit Event
+                </button>
+              </>
             ) : null}
             {user?.isAdmin ? (
-              <button
-                onClick={() => navigate("/admin/scan-ticket")}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.12)",
-                  background: "#111",
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 900,
-                }}
-              >
-                🎫 Scan Tickets
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    saveDashState();
+                    navigate("/submit-event");
+                  }}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    background: "#111",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  Create Event
+                </button>
+
+                <button
+                  onClick={() => navigate("/admin/event-submissions")}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    background: "rgba(255,255,255,0.85)",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  Event Approvals
+                </button>
+
+                <button
+                  onClick={() => navigate("/admin/content-manager")}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    background: "rgba(255,255,255,0.85)",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  Content Manager
+                </button>
+
+                <button
+                  onClick={() => navigate("/admin/scan-ticket")}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    background: "#111",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  Scan Tickets
+                </button>
+              </>
             ) : null}
 
             <button
@@ -1255,12 +1388,41 @@ const Dashboard = () => {
                     width: "100%",
                     height: "100%",
                     borderRadius: "50%",
-                    background: profilePhotoUrl
-                      ? `url(${profilePhotoUrl}) center/cover no-repeat`
-                      : "linear-gradient(135deg,#111,#444)",
                     border: "2px solid rgba(255,255,255,0.85)",
+                    background: "linear-gradient(135deg,#111,#444)",
+                    overflow: "hidden",
+                    display: "grid",
+                    placeItems: "center",
                   }}
-                />
+                >
+                  {profilePhotoUrl && !avatarLoadError ? (
+                    <img
+                      src={`${profilePhotoUrl}${profilePhotoUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(
+                        String(user?.updatedAt || "")
+                      )}`}
+                      alt="profile"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                      onError={() => setAvatarLoadError(true)}
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        color: "#fff",
+                        fontWeight: 1000,
+                        fontSize: 28,
+                        lineHeight: 1,
+                        userSelect: "none",
+                      }}
+                    >
+                      {userInitial}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <button
@@ -1292,7 +1454,7 @@ const Dashboard = () => {
                   <span style={{ fontWeight: 900, opacity: 0.75 }}>{user?.email || ""}</span>
                 </div>
 
-                {!user?.profilePicture ? (
+                {!profilePhotoUrl || avatarLoadError ? (
                   <span
                     style={{
                       fontSize: 12,
@@ -1625,45 +1787,94 @@ const Dashboard = () => {
                 ) : null}
 
                 {!ordersBusy && orders?.length ? (
-                  <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    {orders.slice(0, 20).map((t) => (
-                      <div
-                        key={t._id}
-                        style={{
-                          borderRadius: 16,
-                          border: "1px solid rgba(0,0,0,0.08)",
-                          background: "rgba(255,255,255,0.85)",
-                          padding: 12,
-                        }}
-                      >
-                        <div style={{ fontWeight: 1000, fontSize: 14 }}>
-                          🎫 {t?.event?.title || "Event"}
-                        </div>
-                        <div style={{ marginTop: 6, fontSize: 12.5, opacity: 0.8 }}>
-                          Status: <b>{t.status || "unused"}</b> • Amount: <b>₹{Number(t.amount || 0)}</b>
-                        </div>
-                        <div style={{ marginTop: 6, fontSize: 12.5, opacity: 0.8 }}>
-                          Purchased: {t.createdAt ? new Date(t.createdAt).toLocaleString() : "—"}
-                        </div>
+                  <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+                    {orders.slice(0, 20).map((t) => {
+                      const st = String(t?.status || "unused").toLowerCase();
+                      const canRemove = st === "unused";
+                      const statusStyle =
+                        st === "validated"
+                          ? { bg: "rgba(45,160,90,0.10)", br: "rgba(45,160,90,0.25)", tx: "validated" }
+                          : st === "cancelled"
+                          ? { bg: "rgba(255,77,77,0.10)", br: "rgba(255,77,77,0.25)", tx: "removed" }
+                          : { bg: "rgba(255,180,0,0.12)", br: "rgba(255,180,0,0.30)", tx: "unused" };
 
-                        <button
-                          onClick={() => navigate("/orders")}
+                      return (
+                        <div
+                          key={t._id}
                           style={{
-                            marginTop: 10,
-                            padding: "9px 12px",
-                            borderRadius: 12,
-                            border: "1px solid rgba(0,0,0,0.12)",
-                            background: "#111",
-                            color: "#fff",
-                            cursor: "pointer",
-                            fontWeight: 1000,
-                            width: "100%",
+                            borderRadius: 16,
+                            border: "1px solid rgba(0,0,0,0.08)",
+                            background: "rgba(255,255,255,0.88)",
+                            padding: 12,
+                            boxShadow: "0 8px 18px rgba(0,0,0,0.05)",
                           }}
                         >
-                          Open Orders Page →
-                        </button>
-                      </div>
-                    ))}
+                          <div style={{ fontWeight: 1000, fontSize: 14, minWidth: 0, ...clamp(1) }}>
+                            Pass � {t?.event?.title || "Event"}
+                          </div>
+
+                          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                padding: "4px 10px",
+                                borderRadius: 999,
+                                border: `1px solid ${statusStyle.br}`,
+                                background: statusStyle.bg,
+                                fontSize: 12,
+                                fontWeight: 900,
+                                textTransform: "capitalize",
+                              }}
+                            >
+                              {statusStyle.tx}
+                            </span>
+                            <span style={{ fontSize: 12.5, opacity: 0.82 }}>
+                              Amount: <b>INR {Number(t.amount || 0)}</b>
+                            </span>
+                          </div>
+
+                          <div style={{ marginTop: 6, fontSize: 12.5, opacity: 0.8 }}>
+                            Purchased: {t.createdAt ? new Date(t.createdAt).toLocaleString() : "-"}
+                          </div>
+
+                          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              onClick={() => navigate("/orders")}
+                              style={{
+                                flex: "1 1 140px",
+                                padding: "9px 12px",
+                                borderRadius: 12,
+                                border: "1px solid rgba(0,0,0,0.12)",
+                                background: "#111",
+                                color: "#fff",
+                                cursor: "pointer",
+                                fontWeight: 1000,
+                              }}
+                            >
+                              Open Orders
+                            </button>
+
+                            {canRemove ? (
+                              <button
+                                onClick={() => removeOrder(t._id)}
+                                style={{
+                                  flex: "1 1 120px",
+                                  padding: "9px 12px",
+                                  borderRadius: 12,
+                                  border: "1px solid rgba(255,77,77,0.35)",
+                                  background: "rgba(255,77,77,0.10)",
+                                  color: "#b30000",
+                                  cursor: "pointer",
+                                  fontWeight: 1000,
+                                }}
+                              >
+                                Remove Pass
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : null}
               </div>
@@ -1706,7 +1917,7 @@ const Dashboard = () => {
                 ) : null}
 
                 {!mySubsBusy && mySubs?.length ? (
-                  <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
                     {mySubs.slice(0, 20).map((s) => {
                       const status = (s.status || "pending").toLowerCase();
                       const img = (Array.isArray(s.images) && s.images[0]) || "";
@@ -1717,6 +1928,8 @@ const Dashboard = () => {
                           ? "rgba(45,160,90,0.10)"
                           : status === "rejected"
                           ? "rgba(255,77,77,0.10)"
+                          : status === "removed"
+                          ? "rgba(120,120,120,0.15)"
                           : "rgba(255,180,0,0.12)";
 
                       const pillBr =
@@ -1724,6 +1937,8 @@ const Dashboard = () => {
                           ? "rgba(45,160,90,0.25)"
                           : status === "rejected"
                           ? "rgba(255,77,77,0.25)"
+                          : status === "removed"
+                          ? "rgba(120,120,120,0.28)"
                           : "rgba(255,180,0,0.25)";
 
                       return (
@@ -1780,6 +1995,25 @@ const Dashboard = () => {
                           <div style={{ marginTop: 10, fontSize: 12.5, opacity: 0.8, ...clamp(2) }}>
                             {s.address || s.location || ""}
                           </div>
+
+                          {status === "approved" ? (
+                            <button
+                              onClick={() => removeApprovedSubmission(s._id)}
+                              style={{
+                                marginTop: 10,
+                                width: "100%",
+                                padding: "9px 12px",
+                                borderRadius: 12,
+                                border: "1px solid rgba(255,77,77,0.35)",
+                                background: "rgba(255,77,77,0.10)",
+                                color: "#b30000",
+                                cursor: "pointer",
+                                fontWeight: 1000,
+                              }}
+                            >
+                              Remove Approved Place
+                            </button>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -1978,6 +2212,7 @@ const Dashboard = () => {
                 return (
                   <div
                     key={ev._id}
+                    onClick={() => openDetails(`/event/${ev._id}`)}
                     style={{
                       minWidth: 270,
                       maxWidth: 270,
@@ -1987,13 +2222,14 @@ const Dashboard = () => {
                       background: "rgba(255,255,255,0.85)",
                       flex: "0 0 auto",
                       boxShadow: "0 10px 26px rgba(0,0,0,0.06)",
+                      cursor: "pointer",
                     }}
                   >
                     <div
                       style={{
                         height: 130,
                         background: ev.bannerImage
-                          ? `url(${ev.bannerImage}) center/cover no-repeat`
+                          ? `url(${resolveUploadUrl(ev.bannerImage)}) center/cover no-repeat`
                           : "linear-gradient(135deg,#111,#5b6bff)",
                       }}
                     />
@@ -2013,7 +2249,10 @@ const Dashboard = () => {
 
                         {canBook ? (
                           <button
-                            onClick={() => bookTicket(ev._id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              bookTicket(ev._id);
+                            }}
                             style={{
                               padding: "9px 10px",
                               borderRadius: 12,

@@ -32,11 +32,14 @@ router.get("/", protect, async (req, res) => {
   const city = normCity(req.query.city);
   const q = String(req.query.q || "").trim();
   const limit = Math.min(Math.max(Number(req.query.limit || 80), 1), 200);
+  const includeUnpublished =
+    !!req.user?.isAdmin && String(req.query.includeUnpublished || "").trim() === "1";
 
   if (!city) return res.status(400).json({ message: "city is required" });
 
   try {
     const filter = { city };
+    if (!includeUnpublished) filter.isPublished = { $ne: false };
 
     if (q) {
       const re = new RegExp(escapeRegex(q), "i");
@@ -82,6 +85,9 @@ router.get("/:id", protect, async (req, res) => {
 
     const business = await Business.findById(id).lean();
     if (!business) return res.status(404).json({ message: "Business not found" });
+    if (business.isPublished === false && !req.user?.isAdmin) {
+      return res.status(404).json({ message: "Business not found" });
+    }
 
     return res.json(business);
   } catch (err) {
@@ -125,6 +131,8 @@ router.put("/:id", protect, async (req, res) => {
       "photoRef",
       "placeId",
       "source",
+      "isPublished",
+      "unpublishedReason",
     ];
 
     allow.forEach((k) => {
@@ -237,6 +245,7 @@ router.post("/", protect, async (req, res) => {
       instagram: String(instagram || "").trim(),
 
       curated: true,
+      isPublished: true,
       createdBy: req.user.id,
     });
 
@@ -251,7 +260,7 @@ router.post("/", protect, async (req, res) => {
 });
 
 //
-// ✅ DELETE curated business (ADMIN ONLY)
+// ✅ DELETE curated business (ADMIN ONLY) -> soft-delete (unpublish)
 // DELETE /api/search/:id
 //
 router.delete("/:id", protect, async (req, res) => {
@@ -268,11 +277,99 @@ router.delete("/:id", protect, async (req, res) => {
     const business = await Business.findById(id);
     if (!business) return res.status(404).json({ message: "Business not found" });
 
-    await Business.findByIdAndDelete(id);
-    return res.json({ message: "✅ Curated place deleted" });
+    business.isPublished = false;
+    business.unpublishedAt = new Date();
+    business.unpublishedBy = req.user.id;
+    business.unpublishedReason = String(req.body?.reason || "Deleted by admin").trim();
+    await business.save();
+
+    return res.json({ message: "Place unpublished" });
   } catch (err) {
     console.error("❌ Delete business error:", err.message);
     return res.status(500).json({ message: "Server error (delete)" });
+  }
+});
+
+// ✅ Admin: explicit unpublish
+// POST /api/search/:id/unpublish
+router.post("/:id/unpublish", protect, async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) return res.status(403).json({ message: "Admin only" });
+
+    const id = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid business id" });
+    }
+
+    const business = await Business.findById(id);
+    if (!business) return res.status(404).json({ message: "Business not found" });
+
+    business.isPublished = false;
+    business.unpublishedAt = new Date();
+    business.unpublishedBy = req.user.id;
+    business.unpublishedReason = String(req.body?.reason || "Unpublished by admin").trim();
+    await business.save();
+
+    return res.json({ message: "Place unpublished", business });
+  } catch (err) {
+    console.error("❌ Unpublish business error:", err.message);
+    return res.status(500).json({ message: "Server error (unpublish)" });
+  }
+});
+
+// ✅ Admin: republish
+// POST /api/search/:id/republish
+router.post("/:id/republish", protect, async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) return res.status(403).json({ message: "Admin only" });
+
+    const id = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid business id" });
+    }
+
+    const business = await Business.findById(id);
+    if (!business) return res.status(404).json({ message: "Business not found" });
+
+    business.isPublished = true;
+    business.unpublishedAt = null;
+    business.unpublishedBy = null;
+    business.unpublishedReason = "";
+    await business.save();
+
+    return res.json({ message: "Place republished", business });
+  } catch (err) {
+    console.error("❌ Republish business error:", err.message);
+    return res.status(500).json({ message: "Server error (republish)" });
+  }
+});
+
+// ✅ User: remove own approved submission place directly
+// POST /api/search/:id/remove-mine
+router.post("/:id/remove-mine", protect, async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid business id" });
+    }
+
+    const business = await Business.findById(id);
+    if (!business) return res.status(404).json({ message: "Business not found" });
+
+    if (String(business.submittedBy || "") !== String(req.user.id)) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    business.isPublished = false;
+    business.unpublishedAt = new Date();
+    business.unpublishedBy = req.user.id;
+    business.unpublishedReason = "Removed by owner";
+    await business.save();
+
+    return res.json({ message: "Place removed" });
+  } catch (err) {
+    console.error("❌ Remove own business error:", err.message);
+    return res.status(500).json({ message: "Server error (remove own business)" });
   }
 });
 

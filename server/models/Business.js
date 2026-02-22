@@ -56,6 +56,28 @@ const BusinessSchema = new mongoose.Schema(
 
     curated: { type: Boolean, default: true },
 
+    // user who originally submitted this place (if from user submission)
+    submittedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+
+    // link back to submission for owner actions
+    sourceSubmission: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PendingPlace",
+      default: null,
+      index: true,
+    },
+
+    // soft-delete / moderation visibility
+    isPublished: { type: Boolean, default: true, index: true },
+    unpublishedAt: { type: Date, default: null },
+    unpublishedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    unpublishedReason: { type: String, trim: true, default: "" },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

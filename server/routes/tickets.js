@@ -181,6 +181,45 @@ router.get("/mine", protect, async (req, res) => {
   }
 });
 
+// ✅ User cancel/remove own ticket
+// POST /api/tickets/:id/cancel
+// POST /api/tickets/:id/remove
+const cancelTicketHandler = async (req, res) => {
+  try {
+    const t = await Ticket.findById(req.params.id);
+    if (!t) return res.status(404).json({ message: "Ticket not found" });
+
+    if (!isAdmin(req) && String(t.user) !== String(req.user.id)) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    if (t.status === "validated") {
+      return res.status(400).json({ message: "Validated ticket cannot be removed" });
+    }
+    if (t.status === "cancelled") {
+      return res.status(400).json({ message: "Ticket already removed" });
+    }
+
+    t.status = "cancelled";
+    await t.save();
+
+    // keep event sold counter in sync
+    const ev = await Event.findById(t.event);
+    if (ev) {
+      const qty = Number(t.qty || 1);
+      ev.ticketsSold = Math.max(0, Number(ev.ticketsSold || 0) - qty);
+      await ev.save();
+    }
+
+    return res.json({ message: "Ticket removed", ticketId: String(t._id) });
+  } catch (err) {
+    console.error("Cancel ticket error:", err);
+    return res.status(500).json({ message: "Server error (cancel ticket)" });
+  }
+};
+router.post("/:id/cancel", protect, cancelTicketHandler);
+router.post("/:id/remove", protect, cancelTicketHandler);
+
 // ✅ Ticket details (user own OR admin)
 // GET /api/tickets/:id
 router.get("/:id", protect, async (req, res) => {

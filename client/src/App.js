@@ -8,24 +8,22 @@ import Dashboard from "./pages/Dashboard";
 import PlaceDetails from "./pages/PlaceDetails";
 import SubmitPlace from "./pages/SubmitPlace";
 
-// ✅ Ticket system pages
 import Orders from "./pages/Orders";
 import TicketView from "./pages/TicketView";
-
-// ✅ Admin QR Scanner page
 import AdminScanTicket from "./pages/AdminScanTicket";
+
+import SubmitEvent from "./pages/SubmitEvent";
+import EventDetails from "./pages/EventDetails";
+import AdminEventSubmissions from "./pages/AdminEventSubmissions";
+import AdminContentManager from "./pages/AdminContentManager";
 
 function App() {
   return (
     <Router>
       <Routes>
-        {/* Default route */}
         <Route path="/" element={<Navigate to="/login" />} />
-
-        {/* Auth */}
         <Route path="/login" element={<Login />} />
 
-        {/* Dashboard */}
         <Route
           path="/dashboard"
           element={
@@ -35,7 +33,6 @@ function App() {
           }
         />
 
-        {/* Submit place */}
         <Route
           path="/submit"
           element={
@@ -45,7 +42,42 @@ function App() {
           }
         />
 
-        {/* Place details */}
+        <Route
+          path="/submit-event"
+          element={
+            <ProtectedRoute>
+              <SubmitEvent />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/event/:id"
+          element={
+            <ProtectedRoute>
+              <EventDetails />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/event-submissions"
+          element={
+            <ProtectedRoute>
+              <AdminEventSubmissions />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/content-manager"
+          element={
+            <ProtectedRoute>
+              <AdminContentManager />
+            </ProtectedRoute>
+          }
+        />
+
         <Route
           path="/place/:source/:id"
           element={
@@ -55,7 +87,6 @@ function App() {
           }
         />
 
-        {/* ✅ Orders page */}
         <Route
           path="/orders"
           element={
@@ -65,7 +96,6 @@ function App() {
           }
         />
 
-        {/* ✅ Ticket view page */}
         <Route
           path="/ticket/:id"
           element={
@@ -75,7 +105,6 @@ function App() {
           }
         />
 
-        {/* ✅ Admin: Scan ticket QR */}
         <Route
           path="/admin/scan-ticket"
           element={
@@ -85,7 +114,6 @@ function App() {
           }
         />
 
-        {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </Router>
